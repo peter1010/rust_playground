@@ -84,7 +84,7 @@ impl Language {
 
         let mut offsets = HashSet::<u32>::new();
 
-//        for product in &lang.product_index.products {
+        for product in &lang.product_index {
 //            for mode in &product.mode_index.modes {
 //                for menu in &mode.menu_index.menus {
 //                    offsets.insert(menu.caption_off);
@@ -95,7 +95,7 @@ impl Language {
 //                    }
 //                }
 //            }
-//        }
+        }
         for (mnemonic, details) in &lang.mnemonic_index {
             offsets.insert(details.get_caption_off());
             match details.get_string() {

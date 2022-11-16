@@ -1,14 +1,12 @@
-use std::fs::File;
-use std::io::Read;
 use std::io;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, HashMap};
+use std::rc::Rc;
 
 use crate::conversion::{
     little_endian_2_bytes, 
-    little_endian_2_bytes_as_u8, 
-    little_endian_3_bytes, little_endian_4_bytes, little_endian_4_version};
+    little_endian_3_bytes, little_endian_4_bytes};
 
-use crate::blob::{FileBlob, RawBlob};
+use crate::blob::FileBlob;
 use crate::modes::ModeIndex;
 
 
@@ -20,10 +18,17 @@ pub struct ProductIndexEntry {
     derivative_id_low : u16,
     derivative_id_high : u16,
     flags : u16,
-    mode_index : ModeIndex
+    mode_index : Rc<ModeIndex>
+}
+
+pub struct ProductIndexIterator {
+    items : Vec::<(u16, ProductIndexEntry)>
 }
 
 
+///
+/// Product Index
+///
 impl ProductIndex {
 
     pub fn from(fp : & mut FileBlob, schema : u16, font_family : u8) -> io::Result<ProductIndex> 
@@ -37,7 +42,7 @@ impl ProductIndex {
 
 //        println!("Number of products = {}", num_products);
 
-        Self::validate_schema(schema, idx_entry_len);
+        Self::validate_schema(schema, idx_entry_len, num_products);
 
         let tmp_info = match schema {
             2 => Self::read_v2_entries(fp, num_products, schema) ?,
@@ -57,20 +62,23 @@ impl ProductIndex {
 
             fp.set_pos(offset);
             let mode_index = ModeIndex::from(fp, schema, font_family) ?;
-            products.insert( product_id, ProductIndexEntry { derivative_id_low, derivative_id_high, flags, mode_index});
+            products.insert( product_id, ProductIndexEntry::new(derivative_id_low, derivative_id_high, flags, mode_index));
         }
 
         Result::Ok(ProductIndex { products })
     }
 
 
-    fn validate_schema(schema : u16, idx_entry_len : u8)
+    fn validate_schema(schema : u16, idx_entry_len : u8, num_of_products : u8)
     {
         match schema {
             2 => if idx_entry_len != 8 { panic!("ProductIndexEntry wrong size 8 != {}", idx_entry_len) },
             3 => if idx_entry_len != 11 { panic!("ProductIndexEntry wrong size 11 != {}", idx_entry_len) },
             _ => panic!("Invalid format")
         };
+        if num_of_products > 40 {
+            panic!("Seems a lot of products!");
+        }
     }
 
 
@@ -125,8 +133,32 @@ impl ProductIndex {
     }
 }
 
+impl IntoIterator for &ProductIndex {
+
+    type Item = (u16, ProductIndexEntry);
+    type IntoIter = ProductIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut keys = Vec::new(); 
+        for key in self.products.keys() {
+            keys.push(*key)
+        }
+        keys.sort();
+        let mut items = Vec::new();
+        for key in keys {
+            items.push( (key, self.products[&key].clone()) );
+        }
+        ProductIndexIterator { items }
+    }
+}
+
 
 impl ProductIndexEntry {
+
+    fn new(derivative_id_low : u16, derivative_id_high : u16, flags : u16, mode_index : ModeIndex) -> ProductIndexEntry
+    {
+        ProductIndexEntry {derivative_id_low, derivative_id_high, flags, mode_index : Rc::<ModeIndex>::new(mode_index)}
+    }
 
     fn display(&self)
     {
@@ -142,3 +174,27 @@ impl ProductIndexEntry {
     }
 }
 
+impl Clone for ProductIndexEntry {
+
+    fn clone(&self) -> ProductIndexEntry 
+    {
+        ProductIndexEntry 
+        {
+            derivative_id_low : self.derivative_id_low,
+            derivative_id_high : self.derivative_id_high, 
+            flags : self.flags,
+            mode_index : self.mode_index.clone()
+        }
+    }
+}
+
+
+impl Iterator for ProductIndexIterator 
+{
+    type Item = (u16, ProductIndexEntry);
+
+    fn next(& mut self) -> Option<Self::Item> 
+    {
+        self.items.pop()
+    }
+}
