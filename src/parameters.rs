@@ -10,16 +10,17 @@ use crate::blob::{FileBlob, RawBlob};
 
 pub struct ParameterIndex {
     params : HashMap<u8, ParameterIndexEntry>,
-    max_str_len : u16
 }
 
-struct ParameterIndexEntry {
+pub struct ParameterIndexEntry {
     caption_off : u32,
     tooltip_off : u32,
     blob : RawBlob
 }
 
-
+pub struct ParameterIndexIterator {
+    items : Vec<(u8, ParameterIndexEntry)>
+}
 
 impl ParameterIndex {
 
@@ -29,7 +30,7 @@ impl ParameterIndex {
     /// So read all parameters, create parameter indexes (as if we were V3 format)
     /// And return a parameter index per menu
     ///
-    pub fn read_v2_entries(fp : & mut FileBlob, num_entries : u16, max_str_len : u16) 
+    pub fn read_v2_entries(fp : & mut FileBlob, num_entries : u16) 
             -> io::Result<HashMap::<u8, ParameterIndex>>
     {
         let mut tmp_menus = HashMap::<u8, ParameterIndex>::new();
@@ -39,7 +40,7 @@ impl ParameterIndex {
             match tmp_menus.get_mut(&menu) {
                 None => { 
                     let params = HashMap::<u8, ParameterIndexEntry>::new();
-                    let mut new = ParameterIndex { params, max_str_len} ;
+                    let mut new = ParameterIndex { params} ;
                     new.params.insert(param, entry);
                     tmp_menus.insert(menu, new);
                 },
@@ -70,9 +71,7 @@ impl ParameterIndex {
         let mut params = HashMap::new();
         
         if idx_entry_len != 0 {
-            println!("- - max str len {}", max_str_len);
-            Self::validate_schema(schema, idx_entry_len); 
-
+            Self::validate_schema(schema, idx_entry_len, max_str_len); 
 
             for _i in 0..num_entries {
                 let (param, entry) = ParameterIndexEntry::load_v3(fp) ?;
@@ -83,11 +82,10 @@ impl ParameterIndex {
             } 
 
             let (caption_off, tooltip_off) = Self::check_param255(& mut params);
-            let param_index = ParameterIndex { params, max_str_len };
-            println!("- - - - params {}", param_index.param_list_as_string());
+            let param_index = ParameterIndex { params };
             Result::Ok((param_index, caption_off, tooltip_off))
         } else {
-            Result::Ok((ParameterIndex { params, max_str_len }, 0, 0))
+            Result::Ok((ParameterIndex { params }, 0, 0))
         }
     }
  
@@ -108,59 +106,41 @@ impl ParameterIndex {
         ParameterIndex::check_param255(& mut self.params)
     }
 
-    pub fn validate_schema(schema : u16, idx_entry_len : u8) 
+    pub fn validate_schema(schema : u16, idx_entry_len : u8, max_str_len : u16) 
     {
         match schema {
             2 => if idx_entry_len != 6 { panic!("V2 ParamIndexEntry wrong size 4 != {}", idx_entry_len) },
             3 => if idx_entry_len != 5 { panic!("V3 ParamIndexEntry wrong size 3 != {}", idx_entry_len) },
             _ => panic!("Invalid format")
         };
-    }
-
-    pub fn param_list_as_string(&self) -> String
-    {
-        let mut params = Vec::new();
-        for i in self.params.keys(){
-            params.push(i);
+        if max_str_len != 32 {
+            panic!("Incorrect string len")
         }
-        params.sort();
-
-        if params.len() == 0 {
-            return String::from("None");
-        }
-        let mut temp = String::new();
-        let mut start = *params[0];
-        let mut end = start;
-        for i in 1..params.len() {
-            let n = *params[i];
-            if n == end + 1 {
-                end = n;
-            } else {
-                if end > start {
-                    temp = format!("{}{} - {}, ", &temp, start, end);
-                } else {
-                    temp = format!("{}{}, ", &temp, start);
-                }
-                start = n;
-                end = start;
-            }
-        }
-        if end > start {
-            temp = format!("{}{} - {}, ", &temp, start, end);
-        } else {
-            temp = format!("{}{}, ", &temp, start);
-        }
-        return temp;
     }
 
     pub fn get_num_params(&self) -> usize
     {
         self.params.len()
     }
+}
 
-    pub fn display(&self) 
-    {
-        println!("- - - params {}", self.param_list_as_string());
+impl IntoIterator for &ParameterIndex {
+
+    type Item = (u8, ParameterIndexEntry);
+    type IntoIter = ParameterIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut keys = Vec::new(); 
+        for key in self.params.keys() {
+            keys.push(*key)
+        }
+        keys.sort();
+        keys.reverse();
+        let mut items = Vec::new();
+        for key in keys {
+            items.push( (key, self.params[&key].clone()) );
+        }
+        ParameterIndexIterator { items }
     }
 }
 
@@ -193,6 +173,22 @@ impl ParameterIndexEntry {
         let param_entry = ParameterIndexEntry { caption_off : offset, tooltip_off : 0, blob : fp.freeze()};
         Result::Ok((menu, param, param_entry))
     }
+
+    pub fn to_string(&self) -> Result<String,String>
+    {
+        let str1 = match self.blob.get_string(self.caption_off, 32) {
+            Ok(x) => x,
+            Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x))
+        };
+        if self.tooltip_off != 0 {
+            let str2 = match self.blob.get_string(self.tooltip_off, 32) {
+                Ok(x) => x,
+                Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x))
+            };
+            return Result::Ok(format!("{} / {}", str1, str2));
+        };
+        return Result::Ok(str1);
+    }
 }
 
 
@@ -201,5 +197,29 @@ impl PartialEq for ParameterIndexEntry {
     fn eq(&self, other : & Self) -> bool
     {
         self.caption_off == other.caption_off
+    }
+}
+
+impl Clone for ParameterIndexEntry {
+
+    fn clone(&self) -> ParameterIndexEntry 
+    {
+        ParameterIndexEntry 
+        {
+            caption_off : self.caption_off,
+            tooltip_off : self.tooltip_off, 
+            blob : self.blob.clone()
+        }
+    }
+}
+
+
+impl Iterator for ParameterIndexIterator 
+{
+    type Item = (u8, ParameterIndexEntry);
+
+    fn next(& mut self) -> Option<Self::Item> 
+    {
+        self.items.pop()
     }
 }

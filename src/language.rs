@@ -12,14 +12,10 @@ use crate::blob::{FileBlob, RawBlob};
 use crate::mnemonics::MnemonicIndex;
 use crate::keypadstrs::KeypadStrIndex;
 use crate::units::UnitsIndex;
-use crate::parameters::ParameterIndex;
-use crate::menus::MenuIndex;
 use crate::characters::CharacterMaps;
-use crate::modes::ModeIndex;
 use crate::products::ProductIndex;
 
 pub struct Language {
-    font_family : u8,
 //    lang_name : [u8; 16],
     product_index : ProductIndex,
     mnemonic_index : MnemonicIndex,
@@ -74,15 +70,9 @@ impl Language {
         fp.set_pos(offsets[3]);
         let units_index = UnitsIndex::from(& mut fp, schema, font_family) ?;
 
-        let lang = Language { font_family, product_index, mnemonic_index, keypad_str_index, units_index };
+        let lang = Language { product_index, mnemonic_index, keypad_str_index, units_index };
 
-
-        lang.display();
-
-        let mut min_off = file_len;
-        let mut max_off = 0;
-
-        let mut offsets = HashSet::<u32>::new();
+        println!("Products ....");
 
         for (product, details) in &lang.product_index {
             match details.to_string() {
@@ -99,49 +89,43 @@ impl Language {
                         Ok(x) => println!("- - M.{} => {}", menu, x),
                         Err(x) => panic!("- - M.{} => {}", menu, x)
                     };
-//                    offsets.insert(menu.caption_off);
-//                    offsets.insert(menu.tooltip_off);
-//                    for param in &menu.param_index.params {
-//                        offsets.insert(param.caption_off);
-//                        offsets.insert(param.tooltip_off);
-//                    }
+                    for (param, details) in details.get_params() {
+                        match details.to_string() {
+                            Ok(x) => println!("- - - P.{} => {}", param, x),
+                            Err(x) => panic!("- - - P.{} => {}", param, x)
+                        };
+                    }
                 }
             }
         }
 
+        println!("Mnemonics ....");
+
         for (mnemonic, details) in &lang.mnemonic_index {
-            offsets.insert(details.get_caption_off());
             match details.to_string() {
                 Ok(x) => println!("{} => {}", mnemonic, x),
                 Err(x) => panic!("{} => {}", mnemonic, x),
             };
         }
-//        for keypad_str in &lang.keypad_str_index.keypad_strs {
-//            offsets.insert(keypad_str.caption_off);
-//        }
+
+        println!("Keypad strs ....");
+
+        for (num, details) in &lang.keypad_str_index {
+            match details.to_string() {
+                Ok(x) => println!("{} => {}", num, x),
+                Err(x) => panic!("{} => {}", num, x),
+            };
+ 
+        }
+
+        println!("Units ....");
+
         for (unit, details) in &lang.units_index {
-            offsets.insert(details.get_caption_off());
-            offsets.insert(details.get_tooltip_off());
             match details.to_string() {
                 Ok(x) => println!("{} => {}", unit, x),
                 Err(x) => panic!("{} => {}", unit, x),
             };
         }
-        offsets.remove(&0);
-        println!("There are {} strings", offsets.len());
-
-        let mut min_off = file_len;
-        let mut max_off = 0;
-        for offset in offsets {
-            if offset < min_off {
-                min_off = offset;
-            }
-            if offset > max_off {
-                max_off = offset;
-            }
-        }
-//        fp.Seek(FromStart(max_off));
-        println!("There are {} - {} ", min_off, max_off);
         return Result::Ok(lang);
     }
 
@@ -174,31 +158,6 @@ impl Language {
             _ => panic!("Invalid format")
         };
         return offsets;
-    }
-
-    fn display(&self) 
-    {
-//        let product_index = &self.product_index;
-//        product_index.display();
-//        for product in &product_index.products {
-//            product.display();
-//            for mode in &product.mode_index.modes {
-//                mode.display();
-//                for menu in &mode.menu_index.menus {
-//                    menu.display();
-//                    menu.param_index.display();
-//                    for param in &menu.param_index.params {
-//                    }
-//                }
-//            }
-//        }
-//        for mmenonic in &self.mmenonic_index.mmenonics {
-//       }
-//        for keypad_str in &self.keypad_str_index.keypad_strs {
-//        }
-//        for unit in &self.units_index.units {
-//        }
-   
     }
 }
 

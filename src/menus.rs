@@ -49,11 +49,10 @@ impl MenuIndex {
             panic!("Mis-match font_family");
         }
 
-        println!("- - max str len {}", max_str_len);
-        ParameterIndex::validate_schema(2, idx_entry_len); 
+        ParameterIndex::validate_schema(2, idx_entry_len, max_str_len); 
 
         // Create menus anyway...
-        let mut tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries, max_str_len) ?;
+        let mut tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries) ?;
         // -> io::Result<HashMap::<u8, (ParameterIndex)>>
         
         let mut menus = HashMap::new();
@@ -175,6 +174,11 @@ impl MenuIndexEntry {
             return Result::Ok(format!("{} / {}", str1, str2));
         };
         return Result::Ok(str1);
+    }
+
+    pub fn get_params(&self) -> &ParameterIndex
+    {
+        &self.param_index
     }
 }
 

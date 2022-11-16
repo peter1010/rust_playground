@@ -114,7 +114,7 @@ impl RawBlob {
         if off == 0 {
             return Result::Ok("[-- no string --]".to_string());
         }
-        let mut bytes = self.get_bytes(off, max_length);
+        let bytes = self.get_bytes(off, max_length);
 
         if bytes.len() == 0 {
             return Result::Ok("[-- empty string --]".to_string());

@@ -34,8 +34,8 @@ impl ModeIndex {
         Self::validate_schema(schema, idx_entry_len, num_modes);
         
         let tmp_info = match schema {
-            2 => Self::read_v2_entries(fp, num_modes, schema) ?,
-            3 => Self::read_v3_entries(fp, num_modes, schema) ?,
+            2 => Self::read_v2_entries(fp, num_modes) ?,
+            3 => Self::read_v3_entries(fp, num_modes) ?,
             _ => panic!("Invalid format")
         };
 
@@ -82,10 +82,13 @@ impl ModeIndex {
             3 => if idx_entry_len != 3 { panic!("ModeIndexEntry wrong size 3 != {}", idx_entry_len) },
             _ => panic!("Invalid format")
         };
+        if num_modes > 4 {
+            panic!("Too many modes");
+        }
     }
 
 
-    fn read_v2_entries(fp : & mut FileBlob, num_entries : u8, schema : u16) -> io::Result<Vec<(u8,u32)>>
+    fn read_v2_entries(fp : & mut FileBlob, num_entries : u8) -> io::Result<Vec<(u8,u32)>>
     {
         let mut tmp_info = Vec::new();
 
@@ -110,7 +113,7 @@ impl ModeIndex {
     }
 
     
-    fn read_v3_entries(fp : & mut FileBlob, num_entries : u8, schema : u16) -> io::Result<Vec<(u8,u32)>>
+    fn read_v3_entries(fp : & mut FileBlob, num_entries : u8) -> io::Result<Vec<(u8,u32)>>
     {
         let mut tmp_info = Vec::new();
 

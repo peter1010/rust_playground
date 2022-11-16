@@ -44,7 +44,7 @@ impl UnitsIndex {
         
         Self::validate_schema(schema, idx_entry_len, max_str_len); 
 
-        for i in 0..num_entries {
+        for _i in 0..num_entries {
             let (unit_id, entry) = match schema {
                 2 => {
                     UnitsIndexEntry::load_v2(fp) ?

@@ -45,8 +45,8 @@ impl ProductIndex {
         Self::validate_schema(schema, idx_entry_len, num_products);
 
         let tmp_info = match schema {
-            2 => Self::read_v2_entries(fp, num_products, schema) ?,
-            3 => Self::read_v3_entries(fp, num_products, schema) ?,
+            2 => Self::read_v2_entries(fp, num_products) ?,
+            3 => Self::read_v3_entries(fp, num_products) ?,
             _ => panic!("Invalid format")
         };
 
@@ -82,7 +82,7 @@ impl ProductIndex {
     }
 
 
-    fn read_v2_entries(fp : & mut FileBlob, num_entries : u8, schema : u16) -> io::Result<Vec<(u16, u16, u16, u16, u32)>>
+    fn read_v2_entries(fp : & mut FileBlob, num_entries : u8) -> io::Result<Vec<(u16, u16, u16, u16, u32)>>
     {
         // Language file V2 uses 32 bit offsets
         let mut tmp_info = Vec::new();
@@ -108,7 +108,7 @@ impl ProductIndex {
     }
 
 
-    fn read_v3_entries(fp : & mut FileBlob, num_entries : u8, schema : u16) -> io::Result<Vec<(u16, u16, u16, u16, u32)>>
+    fn read_v3_entries(fp : & mut FileBlob, num_entries : u8) -> io::Result<Vec<(u16, u16, u16, u16, u32)>>
     {
         // Language file >= V3 uses 24 bit offsets
         let mut tmp_info = Vec::new();
