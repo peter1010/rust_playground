@@ -1,5 +1,6 @@
 use std::io;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::conversion::{
     little_endian_3_bytes, little_endian_4_bytes};
@@ -13,9 +14,12 @@ pub struct ModeIndex {
 }
 
 pub struct ModeIndexEntry {
-    menu_index : MenuIndex
+    menu_index : Rc<MenuIndex>
 }
 
+pub struct ModeIndexIterator {
+    items : Vec::<(u8, ModeIndexEntry)>
+}
 
 impl ModeIndex {
 
@@ -47,7 +51,7 @@ impl ModeIndex {
                     if offset != 0 {
                         fp.set_pos(offset);
                         let menu_index = MenuIndex::from_v2(fp, font_family) ?;
-                        modes.insert( mode_num, ModeIndexEntry { menu_index});
+                        modes.insert( mode_num, ModeIndexEntry { menu_index : Rc::<MenuIndex>::new(menu_index)});
                     }
                 }
             },
@@ -56,7 +60,7 @@ impl ModeIndex {
                     if offset != 0 {
                         fp.set_pos(offset);
                         let menu_index = MenuIndex::from_v3plus(fp, font_family) ?;
-                        modes.insert( mode_num, ModeIndexEntry { menu_index});
+                        modes.insert( mode_num, ModeIndexEntry { menu_index : Rc::<MenuIndex>::new(menu_index)});
                     }
                 }
             },
@@ -66,6 +70,10 @@ impl ModeIndex {
         Result::Ok(ModeIndex { modes })
     }
 
+    pub fn get_num_modes(&self) -> usize
+    {
+        self.modes.len()
+    }
 
     fn validate_schema(schema : u16, idx_entry_len : u8, num_modes : u8) 
     {
@@ -124,26 +132,61 @@ impl ModeIndex {
         }
         return Result::Ok(tmp_info);
     }
+}
 
+impl IntoIterator for &ModeIndex {
 
-    fn display(&self)
-    {
-        println!("Num of Modes = {}", self.modes.len());
+    type Item = (u8, ModeIndexEntry);
+    type IntoIter = ModeIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut keys = Vec::new(); 
+        for key in self.modes.keys() {
+            keys.push(*key)
+        }
+        keys.sort();
+        keys.reverse();
+        let mut items = Vec::new();
+        for key in keys {
+            items.push( (key, self.modes[&key].clone()) );
+        }
+        ModeIndexIterator { items }
     }
 }
 
 
 impl ModeIndexEntry {
 
-    pub fn display(&self)
+    pub fn to_string(&self, mode : u8) -> Result<String, String>
+    {   
+        Result::Ok(format!("- Mode {} num of menus = {}", match mode {
+            0 => "Any",
+            1 => "Open Loop",
+            2 => "RFC-A",
+            3 => "RFC-S",
+            4 => "Regen",
+            _ => panic!("Unknown mode")
+        }, self.menu_index.get_num_menus()))
+    }
+}
+
+
+impl Clone for ModeIndexEntry {
+
+    fn clone(&self) -> ModeIndexEntry 
     {
-//        println!("- Mode {} num of menus = {}", match self.mode_num {
-//            0 => "Any",
-//            1 => "Open Loop",
-//            2 => "RFC-A",
-//            3 => "RFC-S",
-//            4 => "Regen",
-//            _ => panic!("Unknown mode")
-//        }, self.menu_index.menus.len());
+        ModeIndexEntry 
+        {
+            menu_index : self.menu_index.clone()
+        }
+    }
+}
+
+
+impl Iterator for ModeIndexIterator {
+    type Item = (u8, ModeIndexEntry);
+
+    fn next(& mut self) -> Option<Self::Item> {
+        self.items.pop()
     }
 }

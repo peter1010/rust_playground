@@ -41,7 +41,6 @@ impl MnemonicIndex {
         }
         let mut mnemonics = HashMap::new();
 
-        println!("- - max str len {}", max_str_len);
         Self::validate_schema(schema, idx_entry_len, max_str_len); 
 
         for i in 0..num_entries {
@@ -89,6 +88,7 @@ impl IntoIterator for &MnemonicIndex {
             keys.push(*key)
         }
         keys.sort();
+        keys.reverse();
         let mut items = Vec::new();
         for key in keys {
             items.push( (key, self.mnemonics[&key].clone()) );
@@ -105,7 +105,7 @@ impl MnemonicIndexEntry {
         self.caption_off
     }
 
-    pub fn get_string(&self) -> Result<String, String>
+    pub fn to_string(&self) -> Result<String, String>
     {
         match self.blob.get_string(self.caption_off, 16) {
             Ok(x) => Ok(x),
@@ -118,10 +118,9 @@ impl MnemonicIndexEntry {
         let mut buf = [0; 6];
         fp.read_exact(& mut buf) ?;
         let mnemonic = little_endian_2_bytes(&buf[0..2]);
-        println!("mnemonic {}", mnemonic);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 { 
-            println!{"Empty slot"};
+            panic!{"Empty slot"};
         };
         let entry = MnemonicIndexEntry { caption_off : offset, blob : fp.freeze() };
         Result::Ok((mnemonic, entry))
@@ -132,10 +131,9 @@ impl MnemonicIndexEntry {
         let mut buf = [0; 5];
         fp.read_exact(& mut buf) ?;
         let mnemonic = little_endian_2_bytes(&buf[0..2]);
-        println!("mnemonic {}", mnemonic);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 { 
-            println!{"Empty slot"};
+            panic!{"Empty slot"};
         };
         let entry = MnemonicIndexEntry { caption_off : offset, blob : fp.freeze()};
         Result::Ok((mnemonic, entry))

@@ -84,8 +84,16 @@ impl Language {
 
         let mut offsets = HashSet::<u32>::new();
 
-        for product in &lang.product_index {
-//            for mode in &product.mode_index.modes {
+        for (product, details) in &lang.product_index {
+            match details.to_string() {
+                Ok(x) => println!("{} => {}", product, x),
+                Err(x) => panic!("{} => {}", product, x)
+            };
+            for (mode, details) in details.get_modes() {
+                match details.to_string(mode) {
+                    Ok(x) => println!("{}", x),
+                    Err(x) => panic!("{}", x)
+                };
 //                for menu in &mode.menu_index.menus {
 //                    offsets.insert(menu.caption_off);
 //                    offsets.insert(menu.tooltip_off);
@@ -94,11 +102,12 @@ impl Language {
 //                        offsets.insert(param.tooltip_off);
 //                    }
 //                }
-//            }
+            }
         }
+
         for (mnemonic, details) in &lang.mnemonic_index {
             offsets.insert(details.get_caption_off());
-            match details.get_string() {
+            match details.to_string() {
                 Ok(x) => println!("{} => {}", mnemonic, x),
                 Err(x) => panic!("{} => {}", mnemonic, x),
             };
@@ -109,7 +118,7 @@ impl Language {
         for (unit, details) in &lang.units_index {
             offsets.insert(details.get_caption_off());
             offsets.insert(details.get_tooltip_off());
-            match details.get_string() {
+            match details.to_string() {
                 Ok(x) => println!("{} => {}", unit, x),
                 Err(x) => panic!("{} => {}", unit, x),
             };

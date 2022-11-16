@@ -88,6 +88,7 @@ impl IntoIterator for &UnitsIndex {
             keys.push(*key)
         }
         keys.sort();
+        keys.reverse();
         let mut items = Vec::new();
         for key in keys {
             items.push( (key, self.units[&key].clone()) );
@@ -110,7 +111,7 @@ impl UnitsIndexEntry {
         self.caption_off
     }
 
-    pub fn get_string(&self) -> Result<String, String>
+    pub fn to_string(&self) -> Result<String, String>
     {
         let str1 = match self.blob.get_string(self.caption_off, 16) {
             Ok(x) => x,
@@ -133,10 +134,9 @@ impl UnitsIndexEntry {
         let mut buf = [0; 6];
         fp.read_exact(& mut buf) ?;
         let unit_id = little_endian_2_bytes(&buf[0..2]);
-        println!("unit {}", unit_id);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 { 
-            println!{"Empty slot"};
+            panic!{"Empty slot"};
         };
         let entry = UnitsIndexEntry { caption_off : offset, tooltip_off : 0, blob : fp.freeze()};
         Result::Ok((unit_id, entry))
@@ -147,10 +147,9 @@ impl UnitsIndexEntry {
         let mut buf = [0; 5];
         fp.read_exact(& mut buf) ?;
         let unit_id = little_endian_2_bytes(&buf[0..2]);
-        println!("unit {}", unit_id);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 { 
-            println!{"Empty slot"};
+            panic!{"Empty slot"};
         };
         let entry = UnitsIndexEntry { caption_off : offset, tooltip_off : 0, blob : fp.freeze()};
         Result::Ok((unit_id, entry))

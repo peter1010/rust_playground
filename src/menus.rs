@@ -125,6 +125,11 @@ impl MenuIndex {
         return Result::Ok(tmp_info);
     }
  
+    pub fn get_num_menus(&self) -> usize
+    {
+        self.menus.len()
+    }
+
     pub fn display(&self)
     {
         println!("- Num of menus = {}", self.menus.len());

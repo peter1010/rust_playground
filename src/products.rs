@@ -144,6 +144,7 @@ impl IntoIterator for &ProductIndex {
             keys.push(*key)
         }
         keys.sort();
+        keys.reverse();
         let mut items = Vec::new();
         for key in keys {
             items.push( (key, self.products[&key].clone()) );
@@ -160,19 +161,25 @@ impl ProductIndexEntry {
         ProductIndexEntry {derivative_id_low, derivative_id_high, flags, mode_index : Rc::<ModeIndex>::new(mode_index)}
     }
 
-    fn display(&self)
+    pub fn to_string(&self) -> Result<String, String>
     {
-//        let num_modes = self.mode_index.modes.len();
-//        if self.derivative_id_high == 65535 &&  self.derivative_id_low == 0{
-//            println!("Product = {} : ALL : num of modes = {}", self.product_id, num_modes);
-//        } else if self.derivative_id_high > self.derivative_id_low {
-//            println!("Product = {} : {} - {} : num_of_modes = {}", self.product_id, 
-//                    self.derivative_id_low, self.derivative_id_high, num_modes);
-//        } else {
-//            println!("Product = {} : {} : num_of_modes = {}", self.product_id, self.derivative_id_low, num_modes);
-//        }
+        let num_modes = self.mode_index.get_num_modes();
+        if self.derivative_id_high == 65535 &&  self.derivative_id_low == 0{
+            return Result::Ok(format!("ALL DERIVATIVES : num of modes = {}", num_modes));
+        } 
+        if self.derivative_id_high > self.derivative_id_low {
+            return Result::Ok(format!("Derv {} - {} : num_of_modes = {}", 
+                    self.derivative_id_low, self.derivative_id_high, num_modes));
+        }
+        return Result::Ok(format!(" Derv {} : num_of_modes = {}", self.derivative_id_low, num_modes));
+    }
+
+    pub fn get_modes(&self) -> &ModeIndex
+    {
+        &self.mode_index
     }
 }
+
 
 impl Clone for ProductIndexEntry {
 
