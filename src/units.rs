@@ -120,7 +120,7 @@ impl UnitsIndexEntry {
         if self.tooltip_off != 0 {
             let str2 = match self.blob.get_string(self.tooltip_off, 16) {
                 Ok(x) => x,
-                Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x))
+                Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x))
             };
             return Result::Ok(format!("{} / {}", str1, str2));
         };

@@ -91,17 +91,21 @@ impl Language {
             };
             for (mode, details) in details.get_modes() {
                 match details.to_string(mode) {
-                    Ok(x) => println!("{}", x),
-                    Err(x) => panic!("{}", x)
+                    Ok(x) => println!("- {}", x),
+                    Err(x) => panic!("- {}", x)
                 };
-//                for menu in &mode.menu_index.menus {
+                for (menu, details) in details.get_menus() {
+                    match details.to_string() {
+                        Ok(x) => println!("- - M.{} => {}", menu, x),
+                        Err(x) => panic!("- - M.{} => {}", menu, x)
+                    };
 //                    offsets.insert(menu.caption_off);
 //                    offsets.insert(menu.tooltip_off);
 //                    for param in &menu.param_index.params {
 //                        offsets.insert(param.caption_off);
 //                        offsets.insert(param.tooltip_off);
 //                    }
-//                }
+                }
             }
         }
 

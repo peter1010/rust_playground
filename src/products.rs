@@ -126,12 +126,8 @@ impl ProductIndex {
         }
         return Result::Ok(tmp_info);
     }
-
-    fn display(&self)
-    {
-        println!("Num of Product = {}", self.products.len());
-    }
 }
+
 
 impl IntoIterator for &ProductIndex {
 

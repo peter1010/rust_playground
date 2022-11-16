@@ -1,5 +1,6 @@
 use std::io;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::conversion::{
     little_endian_2_bytes, 
@@ -13,12 +14,17 @@ pub struct MenuIndex {
     menus : HashMap<u8, MenuIndexEntry>
 }
 
-struct MenuIndexEntry {
+pub struct MenuIndexEntry {
     caption_off : u32,
     tooltip_off : u32,
-    param_index : ParameterIndex,
+    param_index : Rc<ParameterIndex>,
     blob : RawBlob
 }
+
+pub struct MenuIndexIterator {
+    items : Vec<(u8, MenuIndexEntry)>
+}
+
 
 
 impl MenuIndex {
@@ -57,11 +63,13 @@ impl MenuIndex {
         for menu in keys {
             if let Some(mut param_index) = tmp_menus.remove(&menu) {
                 let (caption_off, tooltip_off) = param_index.self_check_param255();
-                let temp = param_index.param_list_as_string();
+//                let temp = param_index.param_list_as_string();
   //              println!("- - Menu {}", menu);
-                println!("- - - Params {}", temp);
+//                println!("- - - Params {}", temp);
  
-                menus.insert( menu, MenuIndexEntry { caption_off, tooltip_off, param_index, blob : fp.freeze()});
+                menus.insert( menu, MenuIndexEntry { 
+                    caption_off, tooltip_off, param_index : Rc::<ParameterIndex>::new(param_index), blob : fp.freeze()
+                });
             }
         }
 
@@ -84,14 +92,12 @@ impl MenuIndex {
 
         let tmp_info = Self::read_v3_entries(fp, num_menus) ?;
 
-        // println!("Num of menus {}", tmp_info.len());
-
-
         for (menu, offset) in tmp_info {
-//            println!("- - Menu {}", menu);
             fp.set_pos(offset);
             let (param_index, caption_off, tooltip_off) = ParameterIndex::from(fp, 3, font_family) ?;
-            let menu_entry = MenuIndexEntry { caption_off, tooltip_off, param_index, blob : fp.freeze() };
+            let menu_entry = MenuIndexEntry { 
+                caption_off, tooltip_off, param_index : Rc::<ParameterIndex>::new(param_index), blob : fp.freeze() 
+            };
             let old = menus.insert(menu, menu_entry);
             if old != None {
                 panic!("Duplicate menus found");
@@ -129,21 +135,47 @@ impl MenuIndex {
     {
         self.menus.len()
     }
+}
 
-    pub fn display(&self)
-    {
-        println!("- Num of menus = {}", self.menus.len());
+impl IntoIterator for &MenuIndex {
+
+    type Item = (u8, MenuIndexEntry);
+    type IntoIter = MenuIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut keys = Vec::new(); 
+        for key in self.menus.keys() {
+            keys.push(*key)
+        }
+        keys.sort();
+        keys.reverse();
+        let mut items = Vec::new();
+        for key in keys {
+            items.push( (key, self.menus[&key].clone()) );
+        }
+        MenuIndexIterator { items }
     }
 }
 
 
+
 impl MenuIndexEntry {
 
-//    pub fn display(&self)
-//    {
-//        println!("- - Menu {} num of params = {}", self.menu, 
-//            self.param_index.get_num_params());
-//    }
+    pub fn to_string(&self) -> Result<String,String>
+    {
+        let str1 = match self.blob.get_string(self.caption_off, 32) {
+            Ok(x) => x,
+            Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x))
+        };
+        if self.tooltip_off != 0 {
+            let str2 = match self.blob.get_string(self.tooltip_off, 32) {
+                Ok(x) => x,
+                Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x))
+            };
+            return Result::Ok(format!("{} / {}", str1, str2));
+        };
+        return Result::Ok(str1);
+    }
 }
 
 impl PartialEq for MenuIndexEntry {
@@ -151,5 +183,30 @@ impl PartialEq for MenuIndexEntry {
     fn eq(&self, other : & Self) -> bool
     {
         self.caption_off == other.caption_off
+    }
+}
+
+impl Clone for MenuIndexEntry {
+
+    fn clone(&self) -> MenuIndexEntry 
+    {
+        MenuIndexEntry 
+        {
+            caption_off : self.caption_off,
+            tooltip_off : self.tooltip_off, 
+            param_index : self.param_index.clone(),
+            blob : self.blob.clone()
+        }
+    }
+}
+
+
+impl Iterator for MenuIndexIterator 
+{
+    type Item = (u8, MenuIndexEntry);
+
+    fn next(& mut self) -> Option<Self::Item> 
+    {
+        self.items.pop()
     }
 }

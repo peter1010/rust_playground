@@ -1,5 +1,5 @@
 use std::io;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::conversion::{
@@ -159,7 +159,7 @@ impl ModeIndexEntry {
 
     pub fn to_string(&self, mode : u8) -> Result<String, String>
     {   
-        Result::Ok(format!("- Mode {} num of menus = {}", match mode {
+        Result::Ok(format!("Mode '{}' num of menus = {}", match mode {
             0 => "Any",
             1 => "Open Loop",
             2 => "RFC-A",
@@ -168,8 +168,12 @@ impl ModeIndexEntry {
             _ => panic!("Unknown mode")
         }, self.menu_index.get_num_menus()))
     }
-}
 
+    pub fn get_menus(&self) -> &MenuIndex
+    {
+        &self.menu_index
+    }
+}
 
 impl Clone for ModeIndexEntry {
 
