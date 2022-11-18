@@ -127,22 +127,32 @@ impl RawBlob {
 
         let mut result = String::new();
         let mut i = 0;
+
         while i < bytes.len() {
-            let ch = bytes[i];
+            let ch1 = bytes[i];
             i += 1;
-            let unicode = if (ch & 0xC0) == 0xC0 {
-                if i == bytes.len() {
+            let mut unicode = if i < bytes.len() {
+                let ch2 = bytes[i];
+                if ((ch2 & 0xC0) == 0xC0) && ((ch1 & 0x01) == 0x01) {
+                    i += 1;
+                    self.data
+                        .maps
+                        .decode_2bytes((((ch2 as u16) & !0xC0) << 7) | ((ch1 >> 1) as u16))
+                } else if (ch1 & 0xC0) == 0xC0 {
                     return Err(format!(
                         "Dangling half word character, string so far is {} from {:02X?}",
                         result, bytes
                     ));
+                } else {
+                    self.data.maps.decode_byte(ch1)
                 }
-                let mut ch2 = bytes[i] as u16;
-                i += 1;
-                ch2 = (((ch as u16) & !0xC0) << 7) | (ch2 >> 1);
-                self.data.maps.decode_2bytes(ch2)
+            } else if (ch1 & 0xC0) == 0xC0 {
+                return Err(format!(
+                    "Dangling half word character, string so far is {} from {:02X?}",
+                    result, bytes
+                ));
             } else {
-                self.data.maps.decode_byte(ch)
+                self.data.maps.decode_byte(ch1)
             };
             result = match unicode {
                 Some(ch) => result + &ch,
