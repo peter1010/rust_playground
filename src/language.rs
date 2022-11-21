@@ -142,6 +142,9 @@ impl Language {
                 Err(x) => panic!("{} => {}", unit, x),
             };
         }
+
+        fp.display_stats();
+
         return Result::Ok(lang);
     }
 

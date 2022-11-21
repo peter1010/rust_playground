@@ -31,7 +31,7 @@ impl MenuIndex {
         // Read ParameterIndex
 
         let mut header = [0; 6];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 6)?;
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -76,7 +76,7 @@ impl MenuIndex {
 
     pub fn from_v3plus(fp: &mut FileBlob, font_family: u8) -> io::Result<MenuIndex> {
         let mut header = [0; 2];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 6)?;
 
         let num_menus = header[0];
         let idx_entry_len = header[1];
@@ -125,7 +125,7 @@ impl MenuIndex {
 
         for i in 0..num_entries {
             let mut buf = [0; 3];
-            fp.read_exact(&mut buf)?;
+            fp.read_exact(&mut buf, 6)?;
             let offset = little_endian_3_bytes(&buf[0..3]);
             if offset > 0 {
                 tmp_info.push((i, offset));

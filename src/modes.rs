@@ -22,7 +22,7 @@ pub struct ModeIndexIterator {
 impl ModeIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> io::Result<ModeIndex> {
         let mut header = [0; 2];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 4)?;
 
         let num_modes = header[0];
         let idx_entry_len = header[1];
@@ -104,7 +104,7 @@ impl ModeIndex {
 
         for i in 0..num_entries {
             let mut buf = [0; 5];
-            fp.read_exact(&mut buf)?;
+            fp.read_exact(&mut buf, 4)?;
             let mode_num = buf[0];
             if num_entries > 1 {
                 if mode_num != i + 1 {
@@ -127,7 +127,7 @@ impl ModeIndex {
 
         for i in 0..num_entries {
             let mut buf = [0; 3];
-            fp.read_exact(&mut buf)?;
+            fp.read_exact(&mut buf, 4)?;
             let offset = little_endian_3_bytes(&buf[0..3]);
             let mode_num = if num_entries == 1 {
                 if offset == 0 {

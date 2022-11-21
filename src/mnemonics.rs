@@ -21,7 +21,7 @@ pub struct MnemonicIndexIterator {
 impl MnemonicIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> io::Result<MnemonicIndex> {
         let mut header = [0; 6];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 5)?;
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -103,7 +103,7 @@ impl MnemonicIndexEntry {
 
     fn load_v2(fp: &mut FileBlob) -> io::Result<(u16, MnemonicIndexEntry)> {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 5)?;
         let mnemonic = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 {
@@ -118,7 +118,7 @@ impl MnemonicIndexEntry {
 
     fn load_v3(fp: &mut FileBlob) -> io::Result<(u16, MnemonicIndexEntry)> {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 5)?;
         let mnemonic = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 {

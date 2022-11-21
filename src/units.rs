@@ -22,7 +22,7 @@ pub struct UnitsIndexIterator {
 impl UnitsIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> io::Result<UnitsIndex> {
         let mut header = [0; 6];
-        fp.read_exact(&mut header)
+        fp.read_exact(&mut header, 1)
             .expect("Failed to read Units header");
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
@@ -117,7 +117,7 @@ impl UnitsIndexEntry {
 
     fn load_v2(fp: &mut FileBlob) -> io::Result<(u16, UnitsIndexEntry)> {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 1)?;
         let unit_id = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 {
@@ -133,7 +133,7 @@ impl UnitsIndexEntry {
 
     fn load_v3(fp: &mut FileBlob) -> io::Result<(u16, UnitsIndexEntry)> {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 1)?;
         let unit_id = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 {

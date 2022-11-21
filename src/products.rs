@@ -28,7 +28,7 @@ pub struct ProductIndexIterator {
 impl ProductIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> io::Result<ProductIndex> {
         let mut header = [0; 2];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 2)?;
 
         // Product index header
         let num_products = header[0];
@@ -94,7 +94,7 @@ impl ProductIndex {
 
         for _i in 0..num_entries {
             let mut buf = [0; 8];
-            fp.read_exact(&mut buf)?;
+            fp.read_exact(&mut buf, 2)?;
             let product_id = little_endian_2_bytes(&buf[2..4]);
             let derivative_id_low = buf[1] as u16;
             let derivative_id_high = buf[1] as u16;
@@ -127,7 +127,7 @@ impl ProductIndex {
 
         for _i in 0..num_entries {
             let mut buf = [0; 11];
-            fp.read_exact(&mut buf)?;
+            fp.read_exact(&mut buf, 2)?;
             let product_id = little_endian_2_bytes(&buf[0..2]);
             let derivative_id_low = little_endian_2_bytes(&buf[2..4]);
             let derivative_id_high = little_endian_2_bytes(&buf[4..6]);

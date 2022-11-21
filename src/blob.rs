@@ -2,12 +2,22 @@ use std::fs::File;
 use std::io;
 use std::io::{Read, Seek, SeekFrom};
 use std::rc::Rc;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 use crate::characters::CharacterMaps;
+
+
+struct Stats {
+    regions: Vec<u8>,
+    string_offsets : HashMap<String, u32>,
+    duplicate_count : u32
+}
 
 struct _Blob {
     data: Vec<u8>,
     maps: CharacterMaps,
+    stats: RefCell<Stats>
 }
 
 pub struct FileBlob {
@@ -30,7 +40,7 @@ impl FileBlob {
         }
     }
 
-    pub fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn read_exact(&mut self, buf: &mut [u8], region: u8) -> io::Result<usize> {
         let to_read = buf.len();
         let pos = self.pos;
 
@@ -38,6 +48,8 @@ impl FileBlob {
             buf[i] = self.data.data[pos + i];
         }
         self.pos = pos + to_read;
+
+        self.data.add_region(pos, pos + to_read, region);
 
         Result::Ok(buf.len())
     }
@@ -71,12 +83,19 @@ impl FileBlob {
         if data.len() != expected_size as usize {
             panic!("File length incorrect");
         }
-        let _blob = Rc::new(_Blob { data, maps });
+        let size = data.len();
+        let stats = Stats { regions: vec![0; size], string_offsets : HashMap::<String, u32>::new(), duplicate_count : 0};
+        let _blob = Rc::new(_Blob { data, maps, stats : RefCell::new(stats) });
 
         Result::Ok(FileBlob {
             data: _blob,
             pos: 0,
         })
+    }
+
+    pub fn display_stats(&self)
+    {
+        self.data.display_stats();
     }
 }
 
@@ -115,9 +134,19 @@ impl RawBlob {
         let bytes = self.get_bytes(off, max_length);
 
         if bytes.len() == 0 {
+            self.data.add_string("", off);
             return Result::Ok("[-- empty string --]".to_string());
         }
+        let result = self.bytes_to_string(bytes);
+        match &result {
+            Ok(x) => self.data.add_string(&x, off),
+            Err(_) => {}  
+        }
+        return result;
+    }
 
+
+    fn bytes_to_string(&self, bytes : Vec<u8>) -> Result<String, String> {
         if self.data.maps.is_utf8() {
             return match String::from_utf8(bytes) {
                 Ok(x) => Ok(x),
@@ -160,5 +189,41 @@ impl RawBlob {
             };
         }
         return Ok(result);
+    }
+}
+
+impl _Blob {
+    pub fn add_region(&self, start: usize, end: usize, _type: u8)
+    {
+        let mut regions = &mut self.stats.borrow_mut().regions;
+
+        for i in start..end {
+            if regions[i] == 0 {
+                regions[i] = _type;
+            } else {
+                if regions[i] != _type {
+                    panic!("Region type mismatch")
+                }
+            }
+        }
+    }
+
+    pub fn add_string(&self, string: &str, off : u32)
+    {
+        let mut stats = self.stats.borrow_mut();
+        let mut string_off = &mut stats.string_offsets;
+        match string_off.get(string) {
+            Some(x) => if *x != off {
+                stats.duplicate_count += 1;
+                println!("!!----- Same string different offset ------!!")
+            },
+            None => {string_off.insert(string.to_string(), off);}
+        }
+    }
+
+    pub fn display_stats(&self)
+    {
+        let stats = self.stats.borrow_mut();
+        println!("Duplicate count {}", stats.duplicate_count);
     }
 }

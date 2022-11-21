@@ -25,7 +25,7 @@ impl KeypadStrIndex {
         root_font_family: u8,
     ) -> io::Result<KeypadStrIndex> {
         let mut header = [0; 6];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 7)?;
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -110,7 +110,7 @@ impl IntoIterator for &KeypadStrIndex {
 impl KeypadStrIndexEntry {
     fn load_v2(fp: &mut FileBlob) -> io::Result<(u16, KeypadStrIndexEntry)> {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 7)?;
         let string_id = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 {
@@ -125,7 +125,7 @@ impl KeypadStrIndexEntry {
 
     fn load_v3(fp: &mut FileBlob) -> io::Result<(u16, KeypadStrIndexEntry)> {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 7)?;
         let string_id = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 {

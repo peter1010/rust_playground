@@ -57,7 +57,7 @@ impl ParameterIndex {
         root_font_family: u8,
     ) -> io::Result<(ParameterIndex, u32, u32)> {
         let mut header = [0; 6];
-        fp.read_exact(&mut header)?;
+        fp.read_exact(&mut header, 3)?;
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -149,7 +149,7 @@ impl IntoIterator for &ParameterIndex {
 impl ParameterIndexEntry {
     fn load_v3(fp: &mut FileBlob) -> io::Result<(u8, ParameterIndexEntry)> {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 3)?;
         let param = buf[0];
         if buf[1] != 0 {
             panic!("Out of range param {}", buf[0]);
@@ -168,7 +168,7 @@ impl ParameterIndexEntry {
 
     fn load_v2(fp: &mut FileBlob) -> io::Result<(u8, u8, ParameterIndexEntry)> {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf)?;
+        fp.read_exact(&mut buf, 3)?;
         let param = buf[0];
         let menu = buf[1];
         let offset = little_endian_4_bytes(&buf[2..6]);
