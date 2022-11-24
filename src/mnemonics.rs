@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::io;
 
 use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
 
-use crate::blob::{FileBlob, RawBlob};
+use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
 pub struct MnemonicIndex {
     mnemonics: HashMap<u16, MnemonicIndexEntry>,
@@ -19,9 +18,9 @@ pub struct MnemonicIndexIterator {
 }
 
 impl MnemonicIndex {
-    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> io::Result<MnemonicIndex> {
+    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> MnemonicIndex {
         let mut header = [0; 6];
-        fp.read_exact(&mut header, 5)?;
+        fp.read_exact(&mut header, BlobRegions::Enumerations);
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -37,8 +36,9 @@ impl MnemonicIndex {
 
         for _i in 0..num_entries {
             let (mnemonic, entry) = match schema {
-                2 => MnemonicIndexEntry::load_v2(fp)?,
-                3 => MnemonicIndexEntry::load_v3(fp)?,
+                2 => MnemonicIndexEntry::load_v2(fp),
+                3 => MnemonicIndexEntry::load_v3(fp),
+                4 => MnemonicIndexEntry::load_v3(fp),
                 _ => panic!("Invalid schema"),
             };
             let old = mnemonics.insert(mnemonic, entry);
@@ -46,8 +46,7 @@ impl MnemonicIndex {
                 panic!("Two entries with same mnemonic!");
             }
         }
-        let mnemonic_index = MnemonicIndex { mnemonics };
-        Result::Ok(mnemonic_index)
+        MnemonicIndex { mnemonics }
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
@@ -58,6 +57,11 @@ impl MnemonicIndex {
                 }
             }
             3 => {
+                if idx_entry_len != 5 {
+                    panic!("V3 MnemonicIndexEntry wrong size 3 != {}", idx_entry_len)
+                }
+            }
+            4 => {
                 if idx_entry_len != 5 {
                     panic!("V3 MnemonicIndexEntry wrong size 3 != {}", idx_entry_len)
                 }
@@ -101,9 +105,9 @@ impl MnemonicIndexEntry {
         }
     }
 
-    fn load_v2(fp: &mut FileBlob) -> io::Result<(u16, MnemonicIndexEntry)> {
+    fn load_v2(fp: &mut FileBlob) -> (u16, MnemonicIndexEntry) {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf, 5)?;
+        fp.read_exact(&mut buf, BlobRegions::Enumerations);
         let mnemonic = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 {
@@ -113,12 +117,12 @@ impl MnemonicIndexEntry {
             caption_off: offset,
             blob: fp.freeze(),
         };
-        Result::Ok((mnemonic, entry))
+        (mnemonic, entry)
     }
 
-    fn load_v3(fp: &mut FileBlob) -> io::Result<(u16, MnemonicIndexEntry)> {
+    fn load_v3(fp: &mut FileBlob) -> (u16, MnemonicIndexEntry) {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf, 5)?;
+        fp.read_exact(&mut buf, BlobRegions::Enumerations);
         let mnemonic = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 {
@@ -128,7 +132,7 @@ impl MnemonicIndexEntry {
             caption_off: offset,
             blob: fp.freeze(),
         };
-        Result::Ok((mnemonic, entry))
+        (mnemonic, entry)
     }
 }
 

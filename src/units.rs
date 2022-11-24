@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::io;
 
 use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
 
-use crate::blob::{FileBlob, RawBlob};
+use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
 pub struct UnitsIndex {
     units: HashMap<u16, UnitsIndexEntry>,
@@ -20,10 +19,9 @@ pub struct UnitsIndexIterator {
 }
 
 impl UnitsIndex {
-    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> io::Result<UnitsIndex> {
+    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> UnitsIndex {
         let mut header = [0; 6];
-        fp.read_exact(&mut header, 1)
-            .expect("Failed to read Units header");
+        fp.read_exact(&mut header, BlobRegions::Units);
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -39,8 +37,8 @@ impl UnitsIndex {
 
         for _i in 0..num_entries {
             let (unit_id, entry) = match schema {
-                2 => UnitsIndexEntry::load_v2(fp)?,
-                3 => UnitsIndexEntry::load_v3(fp)?,
+                2 => UnitsIndexEntry::load_v2(fp),
+                3 => UnitsIndexEntry::load_v3(fp),
                 _ => panic!("Invalid schema"),
             };
             let old = units.insert(unit_id, entry);
@@ -48,7 +46,7 @@ impl UnitsIndex {
                 panic!("Two entries with same units!");
             }
         }
-        Result::Ok(UnitsIndex { units })
+        UnitsIndex { units }
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
@@ -115,9 +113,9 @@ impl UnitsIndexEntry {
         return Result::Ok(str1);
     }
 
-    fn load_v2(fp: &mut FileBlob) -> io::Result<(u16, UnitsIndexEntry)> {
+    fn load_v2(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf, 1)?;
+        fp.read_exact(&mut buf, BlobRegions::Units);
         let unit_id = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_4_bytes(&buf[2..6]);
         if offset == 0 {
@@ -128,12 +126,12 @@ impl UnitsIndexEntry {
             tooltip_off: 0,
             blob: fp.freeze(),
         };
-        Result::Ok((unit_id, entry))
+        (unit_id, entry)
     }
 
-    fn load_v3(fp: &mut FileBlob) -> io::Result<(u16, UnitsIndexEntry)> {
+    fn load_v3(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf, 1)?;
+        fp.read_exact(&mut buf, BlobRegions::Units);
         let unit_id = little_endian_2_bytes(&buf[0..2]);
         let offset = little_endian_3_bytes(&buf[2..5]);
         if offset == 0 {
@@ -144,7 +142,7 @@ impl UnitsIndexEntry {
             tooltip_off: 0,
             blob: fp.freeze(),
         };
-        Result::Ok((unit_id, entry))
+        (unit_id, entry)
     }
 }
 

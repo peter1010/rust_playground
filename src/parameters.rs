@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::io;
 
 use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
 
-use crate::blob::{FileBlob, RawBlob};
+use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
 pub struct ParameterIndex {
     params: HashMap<u8, ParameterIndexEntry>,
@@ -28,11 +27,11 @@ impl ParameterIndex {
     pub fn read_v2_entries(
         fp: &mut FileBlob,
         num_entries: u16,
-    ) -> io::Result<HashMap<u8, ParameterIndex>> {
+    ) -> HashMap<u8, ParameterIndex> {
         let mut tmp_menus = HashMap::<u8, ParameterIndex>::new();
 
         for _i in 0..num_entries {
-            let (menu, param, entry) = ParameterIndexEntry::load_v2(fp)?;
+            let (menu, param, entry) = ParameterIndexEntry::load_v2(fp);
             match tmp_menus.get_mut(&menu) {
                 None => {
                     let params = HashMap::<u8, ParameterIndexEntry>::new();
@@ -48,16 +47,16 @@ impl ParameterIndex {
                 }
             };
         }
-        return Result::Ok(tmp_menus);
+        tmp_menus
     }
 
     pub fn from(
         fp: &mut FileBlob,
         schema: u16,
         root_font_family: u8,
-    ) -> io::Result<(ParameterIndex, u32, u32)> {
+    ) -> (ParameterIndex, u32, u32) {
         let mut header = [0; 6];
-        fp.read_exact(&mut header, 3)?;
+        fp.read_exact(&mut header, BlobRegions::Parameters);
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -73,7 +72,7 @@ impl ParameterIndex {
             Self::validate_schema(schema, idx_entry_len, max_str_len);
 
             for _i in 0..num_entries {
-                let (param, entry) = ParameterIndexEntry::load_v3(fp)?;
+                let (param, entry) = ParameterIndexEntry::load_v3(fp);
                 let old = params.insert(param, entry);
                 if old != None {
                     panic!("Two entries with same parameter!");
@@ -82,9 +81,9 @@ impl ParameterIndex {
 
             let (caption_off, tooltip_off) = Self::check_param255(&mut params);
             let param_index = ParameterIndex { params };
-            Result::Ok((param_index, caption_off, tooltip_off))
+            (param_index, caption_off, tooltip_off)
         } else {
-            Result::Ok((ParameterIndex { params }, 0, 0))
+            (ParameterIndex { params }, 0, 0)
         }
     }
 
@@ -147,9 +146,9 @@ impl IntoIterator for &ParameterIndex {
 }
 
 impl ParameterIndexEntry {
-    fn load_v3(fp: &mut FileBlob) -> io::Result<(u8, ParameterIndexEntry)> {
+    fn load_v3(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
         let mut buf = [0; 5];
-        fp.read_exact(&mut buf, 3)?;
+        fp.read_exact(&mut buf, BlobRegions::Products);
         let param = buf[0];
         if buf[1] != 0 {
             panic!("Out of range param {}", buf[0]);
@@ -163,12 +162,12 @@ impl ParameterIndexEntry {
             tooltip_off: 0,
             blob: fp.freeze(),
         };
-        Result::Ok((param, param_entry))
+        (param, param_entry)
     }
 
-    fn load_v2(fp: &mut FileBlob) -> io::Result<(u8, u8, ParameterIndexEntry)> {
+    fn load_v2(fp: &mut FileBlob) -> (u8, u8, ParameterIndexEntry) {
         let mut buf = [0; 6];
-        fp.read_exact(&mut buf, 3)?;
+        fp.read_exact(&mut buf, BlobRegions::Products);
         let param = buf[0];
         let menu = buf[1];
         let offset = little_endian_4_bytes(&buf[2..6]);
@@ -177,7 +176,7 @@ impl ParameterIndexEntry {
             tooltip_off: 0,
             blob: fp.freeze(),
         };
-        Result::Ok((menu, param, param_entry))
+        (menu, param, param_entry)
     }
 
     pub fn to_string(&self) -> Result<String, String> {

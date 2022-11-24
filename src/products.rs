@@ -1,10 +1,9 @@
 use std::collections::{HashMap, HashSet};
-use std::io;
 use std::rc::Rc;
 
 use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
 
-use crate::blob::FileBlob;
+use crate::blob::{FileBlob, BlobRegions};
 use crate::modes::ModeIndex;
 
 pub struct ProductIndex {
@@ -26,9 +25,9 @@ pub struct ProductIndexIterator {
 /// Product Index
 ///
 impl ProductIndex {
-    pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> io::Result<ProductIndex> {
+    pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ProductIndex {
         let mut header = [0; 2];
-        fp.read_exact(&mut header, 2)?;
+        fp.read_exact(&mut header, BlobRegions::Products);
 
         // Product index header
         let num_products = header[0];
@@ -39,8 +38,9 @@ impl ProductIndex {
         Self::validate_schema(schema, idx_entry_len, num_products);
 
         let tmp_info = match schema {
-            2 => Self::read_v2_entries(fp, num_products)?,
-            3 => Self::read_v3_entries(fp, num_products)?,
+            2 => Self::read_v2_entries(fp, num_products),
+            3 => Self::read_v3_entries(fp, num_products),
+            4 => Self::read_v3_entries(fp, num_products),
             _ => panic!("Invalid format"),
         };
 
@@ -55,14 +55,14 @@ impl ProductIndex {
             //            }
 
             fp.set_pos(offset);
-            let mode_index = ModeIndex::from(fp, schema, font_family)?;
+            let mode_index = ModeIndex::from(fp, schema, font_family);
             products.insert(
                 product_id,
                 ProductIndexEntry::new(derivative_id_low, derivative_id_high, flags, mode_index),
             );
         }
 
-        Result::Ok(ProductIndex { products })
+        ProductIndex { products }
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8, num_of_products: u8) {
@@ -77,6 +77,12 @@ impl ProductIndex {
                     panic!("ProductIndexEntry wrong size 11 != {}", idx_entry_len)
                 }
             }
+            4 => {
+                if idx_entry_len != 11 {
+                    panic!("ProductIndexEntry wrong size 11 != {}", idx_entry_len)
+                }
+            }
+ 
             _ => panic!("Invalid format"),
         };
         if num_of_products > 40 {
@@ -87,14 +93,14 @@ impl ProductIndex {
     fn read_v2_entries(
         fp: &mut FileBlob,
         num_entries: u8,
-    ) -> io::Result<Vec<(u16, u16, u16, u16, u32)>> {
+    ) -> Vec<(u16, u16, u16, u16, u32)> {
         // Language file V2 uses 32 bit offsets
         let mut tmp_info = Vec::new();
         let mut hits = HashSet::new();
 
         for _i in 0..num_entries {
             let mut buf = [0; 8];
-            fp.read_exact(&mut buf, 2)?;
+            fp.read_exact(&mut buf, BlobRegions::Products);
             let product_id = little_endian_2_bytes(&buf[2..4]);
             let derivative_id_low = buf[1] as u16;
             let derivative_id_high = buf[1] as u16;
@@ -114,20 +120,20 @@ impl ProductIndex {
                 offset,
             ))
         }
-        return Result::Ok(tmp_info);
+        tmp_info
     }
 
     fn read_v3_entries(
         fp: &mut FileBlob,
         num_entries: u8,
-    ) -> io::Result<Vec<(u16, u16, u16, u16, u32)>> {
+    ) -> Vec<(u16, u16, u16, u16, u32)> {
         // Language file >= V3 uses 24 bit offsets
         let mut tmp_info = Vec::new();
         //        let mut hits = HashSet::new();
 
         for _i in 0..num_entries {
             let mut buf = [0; 11];
-            fp.read_exact(&mut buf, 2)?;
+            fp.read_exact(&mut buf, BlobRegions::Products);
             let product_id = little_endian_2_bytes(&buf[0..2]);
             let derivative_id_low = little_endian_2_bytes(&buf[2..4]);
             let derivative_id_high = little_endian_2_bytes(&buf[4..6]);
@@ -141,7 +147,7 @@ impl ProductIndex {
                 offset,
             ))
         }
-        return Result::Ok(tmp_info);
+        tmp_info
     }
 }
 

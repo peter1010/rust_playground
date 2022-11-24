@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::io;
 use std::rc::Rc;
 
 use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes};
 
-use crate::blob::{FileBlob, RawBlob};
+use crate::blob::{FileBlob, RawBlob, BlobRegions};
 use crate::parameters::ParameterIndex;
 
 pub struct MenuIndex {
@@ -26,12 +25,12 @@ impl MenuIndex {
     ///
     /// V2 format does not have a MenuIndex,
     ///
-    pub fn from_v2(fp: &mut FileBlob, root_font_family: u8) -> io::Result<MenuIndex> {
+    pub fn from_v2(fp: &mut FileBlob, root_font_family: u8) -> MenuIndex {
         // V2 there are no menu Indexes!
         // Read ParameterIndex
 
         let mut header = [0; 6];
-        fp.read_exact(&mut header, 6)?;
+        fp.read_exact(&mut header, BlobRegions::Menus);
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -45,8 +44,7 @@ impl MenuIndex {
         ParameterIndex::validate_schema(2, idx_entry_len, max_str_len);
 
         // Create menus anyway...
-        let mut tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries)?;
-        // -> io::Result<HashMap::<u8, (ParameterIndex)>>
+        let mut tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries);
 
         let mut menus = HashMap::new();
         let mut keys: Vec<u8> = tmp_menus.keys().cloned().collect();
@@ -71,12 +69,12 @@ impl MenuIndex {
             }
         }
 
-        Result::Ok(MenuIndex { menus })
+        MenuIndex { menus }
     }
 
-    pub fn from_v3plus(fp: &mut FileBlob, font_family: u8) -> io::Result<MenuIndex> {
+    pub fn from_v3plus(fp: &mut FileBlob, font_family: u8) -> MenuIndex {
         let mut header = [0; 2];
-        fp.read_exact(&mut header, 6)?;
+        fp.read_exact(&mut header, BlobRegions::Menus);
 
         let num_menus = header[0];
         let idx_entry_len = header[1];
@@ -85,11 +83,11 @@ impl MenuIndex {
 
         Self::validate_schema(3, idx_entry_len);
 
-        let tmp_info = Self::read_v3_entries(fp, num_menus)?;
+        let tmp_info = Self::read_v3_entries(fp, num_menus);
 
         for (menu, offset) in tmp_info {
             fp.set_pos(offset);
-            let (param_index, caption_off, tooltip_off) = ParameterIndex::from(fp, 3, font_family)?;
+            let (param_index, caption_off, tooltip_off) = ParameterIndex::from(fp, 3, font_family);
             let menu_entry = MenuIndexEntry {
                 caption_off,
                 tooltip_off,
@@ -101,7 +99,7 @@ impl MenuIndex {
                 panic!("Duplicate menus found");
             }
         }
-        Result::Ok(MenuIndex { menus })
+        MenuIndex { menus }
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8) {
@@ -116,23 +114,45 @@ impl MenuIndex {
                     panic!("V3 MenuIndexEntry wrong size 3 != {}", idx_entry_len)
                 }
             }
+            3 => {
+                if idx_entry_len != 9 {
+                    panic!("V3 MenuIndexEntry wrong size 3 != {}", idx_entry_len)
+                }
+            }
             _ => panic!("Invalid format"),
         };
     }
 
-    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> io::Result<Vec<(u8, u32)>> {
+    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32)> {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
             let mut buf = [0; 3];
-            fp.read_exact(&mut buf, 6)?;
+            fp.read_exact(&mut buf, BlobRegions::Menus);
             let offset = little_endian_3_bytes(&buf[0..3]);
             if offset > 0 {
                 tmp_info.push((i, offset));
             }
         }
-        return Result::Ok(tmp_info);
+        tmp_info
     }
+
+    fn read_v4_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32, u32, u32)> {
+        let mut tmp_info = Vec::new();
+
+        for i in 0..num_entries {
+            let mut buf = [0; 9];
+            fp.read_exact(&mut buf, BlobRegions::Menus);
+            let offset1 = little_endian_3_bytes(&buf[0..3]);
+            let offset2 = little_endian_3_bytes(&buf[3..6]);
+            let offset3 = little_endian_3_bytes(&buf[6..9]);
+            if offset1 > 0 {
+                tmp_info.push((i, offset1, offset2, offset3));
+            }
+        }
+        tmp_info
+    }
+
 
     pub fn get_num_menus(&self) -> usize {
         self.menus.len()

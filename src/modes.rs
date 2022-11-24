@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::io;
 use std::rc::Rc;
 
 use crate::conversion::{little_endian_3_bytes, little_endian_4_bytes};
 
-use crate::blob::FileBlob;
+use crate::blob::{FileBlob, BlobRegions};
 use crate::menus::MenuIndex;
 
 pub struct ModeIndex {
@@ -20,9 +19,9 @@ pub struct ModeIndexIterator {
 }
 
 impl ModeIndex {
-    pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> io::Result<ModeIndex> {
+    pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ModeIndex {
         let mut header = [0; 2];
-        fp.read_exact(&mut header, 4)?;
+        fp.read_exact(&mut header, BlobRegions::Modes);
 
         let num_modes = header[0];
         let idx_entry_len = header[1];
@@ -30,8 +29,9 @@ impl ModeIndex {
         Self::validate_schema(schema, idx_entry_len, num_modes);
 
         let tmp_info = match schema {
-            2 => Self::read_v2_entries(fp, num_modes)?,
-            3 => Self::read_v3_entries(fp, num_modes)?,
+            2 => Self::read_v2_entries(fp, num_modes),
+            3 => Self::read_v3_entries(fp, num_modes),
+            4 => Self::read_v3_entries(fp, num_modes),
             _ => panic!("Invalid format"),
         };
 
@@ -46,7 +46,7 @@ impl ModeIndex {
                 for (mode_num, offset) in tmp_info {
                     if offset != 0 {
                         fp.set_pos(offset);
-                        let menu_index = MenuIndex::from_v2(fp, font_family)?;
+                        let menu_index = MenuIndex::from_v2(fp, font_family);
                         modes.insert(
                             mode_num,
                             ModeIndexEntry {
@@ -60,7 +60,7 @@ impl ModeIndex {
                 for (mode_num, offset) in tmp_info {
                     if offset != 0 {
                         fp.set_pos(offset);
-                        let menu_index = MenuIndex::from_v3plus(fp, font_family)?;
+                        let menu_index = MenuIndex::from_v3plus(fp, font_family);
                         modes.insert(
                             mode_num,
                             ModeIndexEntry {
@@ -73,7 +73,7 @@ impl ModeIndex {
             _ => panic!("Invalid format"),
         };
 
-        Result::Ok(ModeIndex { modes })
+        ModeIndex { modes }
     }
 
     pub fn get_num_modes(&self) -> usize {
@@ -92,6 +92,11 @@ impl ModeIndex {
                     panic!("ModeIndexEntry wrong size 3 != {}", idx_entry_len)
                 }
             }
+            4 => {
+                if idx_entry_len != 3 {
+                    panic!("ModeIndexEntry wrong size 3 != {}", idx_entry_len)
+                }
+            }
             _ => panic!("Invalid format"),
         };
         if num_modes > 4 {
@@ -99,12 +104,12 @@ impl ModeIndex {
         }
     }
 
-    fn read_v2_entries(fp: &mut FileBlob, num_entries: u8) -> io::Result<Vec<(u8, u32)>> {
+    fn read_v2_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32)> {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
             let mut buf = [0; 5];
-            fp.read_exact(&mut buf, 4)?;
+            fp.read_exact(&mut buf, BlobRegions::Modes);
             let mode_num = buf[0];
             if num_entries > 1 {
                 if mode_num != i + 1 {
@@ -119,15 +124,15 @@ impl ModeIndex {
             };
             tmp_info.push((mode_num, offset))
         }
-        return Result::Ok(tmp_info);
+        tmp_info
     }
 
-    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> io::Result<Vec<(u8, u32)>> {
+    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32)> {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
             let mut buf = [0; 3];
-            fp.read_exact(&mut buf, 4)?;
+            fp.read_exact(&mut buf, BlobRegions::Modes);
             let offset = little_endian_3_bytes(&buf[0..3]);
             let mode_num = if num_entries == 1 {
                 if offset == 0 {
@@ -141,7 +146,7 @@ impl ModeIndex {
                 tmp_info.push((mode_num, offset));
             }
         }
-        return Result::Ok(tmp_info);
+        tmp_info
     }
 }
 

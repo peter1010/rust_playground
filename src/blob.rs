@@ -7,9 +7,22 @@ use std::collections::HashMap;
 
 use crate::characters::CharacterMaps;
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum BlobRegions {
+    Empty,
+    Header,
+    Units,
+    Products,
+    Parameters,
+    Menus,
+    Modes,
+    Enumerations,
+    Mnemonics,
+    KeypadStrs
+}
 
 struct Stats {
-    regions: Vec<u8>,
+    regions: Vec<BlobRegions>,
     string_offsets : HashMap<String, u32>,
     duplicate_count : u32
 }
@@ -40,7 +53,7 @@ impl FileBlob {
         }
     }
 
-    pub fn read_exact(&mut self, buf: &mut [u8], region: u8) -> io::Result<usize> {
+    pub fn read_exact(&mut self, buf: &mut [u8], region: BlobRegions)  {
         let to_read = buf.len();
         let pos = self.pos;
 
@@ -49,9 +62,7 @@ impl FileBlob {
         }
         self.pos = pos + to_read;
 
-        self.data.add_region(pos, pos + to_read, region);
-
-        Result::Ok(buf.len())
+        self.data.add_region(pos, pos + to_read, region)
     }
 
     ///
@@ -84,7 +95,7 @@ impl FileBlob {
             panic!("File length incorrect");
         }
         let size = data.len();
-        let stats = Stats { regions: vec![0; size], string_offsets : HashMap::<String, u32>::new(), duplicate_count : 0};
+        let stats = Stats { regions: vec![BlobRegions::Empty; size], string_offsets : HashMap::<String, u32>::new(), duplicate_count : 0};
         let _blob = Rc::new(_Blob { data, maps, stats : RefCell::new(stats) });
 
         Result::Ok(FileBlob {
@@ -160,7 +171,7 @@ impl RawBlob {
         while i < bytes.len() {
             let ch1 = bytes[i];
             i += 1;
-            let mut unicode = if i < bytes.len() {
+            let unicode = if i < bytes.len() {
                 let ch2 = bytes[i];
                 if ((ch2 & 0xC0) == 0xC0) && ((ch1 & 0x01) == 0x01) {
                     i += 1;
@@ -193,12 +204,12 @@ impl RawBlob {
 }
 
 impl _Blob {
-    pub fn add_region(&self, start: usize, end: usize, _type: u8)
+    pub fn add_region(&self, start: usize, end: usize, _type: BlobRegions)
     {
-        let mut regions = &mut self.stats.borrow_mut().regions;
+        let regions = &mut self.stats.borrow_mut().regions;
 
         for i in start..end {
-            if regions[i] == 0 {
+            if regions[i] == BlobRegions::Empty {
                 regions[i] = _type;
             } else {
                 if regions[i] != _type {
@@ -211,7 +222,7 @@ impl _Blob {
     pub fn add_string(&self, string: &str, off : u32)
     {
         let mut stats = self.stats.borrow_mut();
-        let mut string_off = &mut stats.string_offsets;
+        let string_off = &mut stats.string_offsets;
         match string_off.get(string) {
             Some(x) => if *x != off {
                 stats.duplicate_count += 1;

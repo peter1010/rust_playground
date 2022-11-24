@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io;
 use std::io::Read;
@@ -8,7 +7,7 @@ use crate::conversion::{
     little_endian_4_bytes, little_endian_4_version,
 };
 
-use crate::blob::{FileBlob, RawBlob};
+use crate::blob::{FileBlob, BlobRegions};
 use crate::characters::CharacterMaps;
 use crate::keypadstrs::KeypadStrIndex;
 use crate::mnemonics::MnemonicIndex;
@@ -18,41 +17,24 @@ use crate::units::UnitsIndex;
 pub struct Language {
     //    lang_name : [u8; 16],
     product_index: ProductIndex,
-    mnemonic_index: MnemonicIndex,
+    enumeration_index: MnemonicIndex,
     keypad_str_index: KeypadStrIndex,
     units_index: UnitsIndex,
 }
 
 impl Language {
     pub fn from(fp: &mut File, maps: CharacterMaps) -> io::Result<Language> {
-        let mut header = [0; 52];
-        fp.read_exact(&mut header)?;
+        let mut common_hdr = [0; 32];
+        fp.read_exact(&mut common_hdr)?;
 
         // Language file header
-        let file_len = little_endian_4_bytes(&header[0..4]);
-        let file_crc = little_endian_4_bytes(&header[4..8]);
-        let schema = little_endian_2_bytes(&header[8..10]);
-        let locale_id = little_endian_2_bytes(&header[10..12]);
-        let lang_version = little_endian_4_version(&header[12..16]);
-        let lang_name = &header[16..32];
-        let font_family = little_endian_2_bytes_as_u8(&header[32..34]);
-        let offset_size = little_endian_2_bytes(&header[34..36]);
-
-        println!("Language file length = {}, crc = {}", file_len, file_crc);
-        println!(
-            "Language file schema {}, offset_size {}, version {}",
-            schema, offset_size, lang_version
-        );
-        println!(
-            "Language file locale_id {}, font family {}",
-            locale_id, font_family
-        ); // lang_name..
-
-        Self::validate_schema(schema, offset_size);
-
-        // Language file V2 uses 32 bit offsets, Language file >= V3 uses 24 bit offsets
-        let offsets = Self::parse_offsets(&header[36..], offset_size);
-
+        let file_len = little_endian_4_bytes(&common_hdr[0..4]);
+        let file_crc = little_endian_4_bytes(&common_hdr[4..8]);
+        let schema = little_endian_2_bytes(&common_hdr[8..10]);
+        let locale_id = little_endian_2_bytes(&common_hdr[10..12]);
+        let lang_version = little_endian_4_version(&common_hdr[12..16]);
+        let lang_name = &common_hdr[16..32];
+        
         let mut fp = FileBlob::load(
             fp,
             file_len,
@@ -63,16 +45,43 @@ impl Language {
                 maps
             },
         )?;
+        fp.set_pos(32);
+       
+        println!("Language file locale_id {}, length {}, crc {}, schema {}", locale_id, file_len, file_crc, schema);
+
+        let font_family = if schema < 4 {
+            let mut font_hdr = [0; 2];
+            fp.read_exact(&mut font_hdr, BlobRegions::Header);
+            let font_family = little_endian_2_bytes_as_u8(&font_hdr[0..2]);
+            println!("Font family {}", font_family);
+            font_family
+        } else {
+            0
+        };
+
+        let mut hdr = [0; 2];
+        fp.read_exact(&mut hdr, BlobRegions::Header);
+        let offset_size = little_endian_2_bytes(&hdr[0..2]);
+
+        println!(
+            "Language file offset_size {}, version {}",
+            offset_size, lang_version
+        );
+
+        Self::validate_schema(schema, offset_size);
+
+        // Language file V2 uses 32 bit offsets, Language file >= V3 uses 24 bit offsets
+        let offsets = Self::parse_offsets(&mut fp, schema, offset_size);
 
         fp.set_pos(offsets[0]);
-        let product_index = ProductIndex::from(&mut fp, schema, font_family)?;
+        let product_index = ProductIndex::from(&mut fp, schema, font_family);
 
         fp.set_pos(offsets[1]);
-        let mnemonic_index = MnemonicIndex::from(&mut fp, schema, font_family)?;
+        let enumeration_index = MnemonicIndex::from(&mut fp, schema, font_family);
 
         let keypad_str_index = if offsets[2] > 0 {
             fp.set_pos(offsets[2]);
-            KeypadStrIndex::from(&mut fp, schema, font_family)?
+            KeypadStrIndex::from(&mut fp, schema, font_family)
         } else if schema == 2 {
             panic!("Missing Keypad strings in V2 language file");
         } else {
@@ -80,11 +89,11 @@ impl Language {
         };
 
         fp.set_pos(offsets[3]);
-        let units_index = UnitsIndex::from(&mut fp, schema, font_family)?;
+        let units_index = UnitsIndex::from(&mut fp, schema, font_family);
 
         let lang = Language {
             product_index,
-            mnemonic_index,
+            enumeration_index,
             keypad_str_index,
             units_index,
         };
@@ -116,12 +125,12 @@ impl Language {
             }
         }
 
-        println!("Mnemonics ....");
+        println!("Legacy Enumerations ....");
 
-        for (mnemonic, details) in &lang.mnemonic_index {
+        for (enumeration, details) in &lang.enumeration_index {
             match details.to_string() {
-                Ok(x) => println!("{} => {}", mnemonic, x),
-                Err(x) => panic!("{} => {}", mnemonic, x),
+                Ok(x) => println!("{} => {}", enumeration, x),
+                Err(x) => panic!("{} => {}", enumeration, x),
             };
         }
 
@@ -148,6 +157,9 @@ impl Language {
         return Result::Ok(lang);
     }
 
+    ///
+    /// Validate the schema
+    ///
     fn validate_schema(schema: u16, offset_size: u16) {
         match schema {
             2 => {
@@ -160,25 +172,43 @@ impl Language {
                     panic!("Invalid format")
                 }
             }
-            _ => panic!("Invalid format"),
+            4 => {
+                if offset_size != 3 {
+                    panic!("Invalid format")
+                }
+            }
+            _ => panic!("Invalid format {}", schema),
         };
     }
 
-    fn parse_offsets(header: &[u8], offset_size: u16) -> Vec<u32> {
+
+    fn parse_offsets(fp : & mut FileBlob, schema : u16, offset_size: u16) -> Vec<u32> {
         // Language file V2 uses 32 bit offsets, Language file >= V3 uses 24 bit offsets
         let mut offsets = Vec::new();
-        match offset_size {
+        match schema {
+            2 => {
+                let mut header = [0; 16];
+                fp.read_exact(&mut header, BlobRegions::Header); 
+                offsets.push(little_endian_3_bytes(&header[0..4]));
+                offsets.push(little_endian_3_bytes(&header[4..8]));
+                offsets.push(little_endian_3_bytes(&header[8..12]));
+                offsets.push(little_endian_3_bytes(&header[12..16]));
+            }
             3 => {
+                let mut header = [0; 12];
+                fp.read_exact(&mut header, BlobRegions::Header); 
                 offsets.push(little_endian_3_bytes(&header[0..3]));
                 offsets.push(little_endian_3_bytes(&header[3..6]));
                 offsets.push(little_endian_3_bytes(&header[6..9]));
                 offsets.push(little_endian_3_bytes(&header[9..12]));
             }
             4 => {
-                offsets.push(little_endian_3_bytes(&header[0..4]));
-                offsets.push(little_endian_3_bytes(&header[4..8]));
-                offsets.push(little_endian_3_bytes(&header[8..12]));
-                offsets.push(little_endian_3_bytes(&header[12..16]));
+                let mut header = [0; 9];
+                fp.read_exact(&mut header, BlobRegions::Header); 
+                offsets.push(little_endian_3_bytes(&header[0..3]));
+                offsets.push(little_endian_3_bytes(&header[3..6]));
+                offsets.push(0);
+                offsets.push(little_endian_3_bytes(&header[6..9]));
             }
             _ => panic!("Invalid format"),
         };
