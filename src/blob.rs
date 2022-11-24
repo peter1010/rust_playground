@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::characters::CharacterMaps;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum BlobRegions {
     Empty,
     Header,
@@ -18,13 +18,17 @@ pub enum BlobRegions {
     Modes,
     Enumerations,
     Mnemonics,
-    KeypadStrs
+    KeypadStrs,
+    Text,
+    Invalid
 }
 
+///
+/// Collect some stats
+///
 struct Stats {
     regions: Vec<BlobRegions>,
-    string_offsets : HashMap<String, u32>,
-    duplicate_count : u32
+    string_offsets : HashMap<String, (u32, u32)>,
 }
 
 struct _Blob {
@@ -91,11 +95,11 @@ impl FileBlob {
                 }
             };
         }
-        if data.len() != expected_size as usize {
+        let size = data.len();
+        if size != expected_size as usize {
             panic!("File length incorrect");
         }
-        let size = data.len();
-        let stats = Stats { regions: vec![BlobRegions::Empty; size], string_offsets : HashMap::<String, u32>::new(), duplicate_count : 0};
+        let stats = Stats { regions: vec![BlobRegions::Empty; size], string_offsets : HashMap::<String, (u32,u32)>::new()};
         let _blob = Rc::new(_Blob { data, maps, stats : RefCell::new(stats) });
 
         Result::Ok(FileBlob {
@@ -119,6 +123,10 @@ impl Clone for RawBlob {
 }
 
 impl RawBlob {
+
+    ///
+    /// Get bytes that represent a string, from the blob
+    ///
     fn get_bytes(&self, off: u32, max_length: u16) -> Vec<u8> {
         let mut bytes = Vec::new();
         let buf = &self.data.data;
@@ -129,12 +137,16 @@ impl RawBlob {
         while i < end {
             let ch = buf[i];
             if ch == 0 {
+                i += 1;
                 break;
             } else {
                 bytes.push(ch);
             }
             i += 1;
         }
+        // Note down what was in that region of the Blob for diagnostics.
+        self.data.add_region(off as usize, i, BlobRegions::Text);
+
         return bytes;
     }
 
@@ -143,14 +155,14 @@ impl RawBlob {
             return Result::Ok("[-- no string --]".to_string());
         }
         let bytes = self.get_bytes(off, max_length);
-
-        if bytes.len() == 0 {
-            self.data.add_string("", off);
+        let len = bytes.len() as u32;
+        if len == 0 {
+            self.data.add_string("", off, 1);
             return Result::Ok("[-- empty string --]".to_string());
         }
         let result = self.bytes_to_string(bytes);
         match &result {
-            Ok(x) => self.data.add_string(&x, off),
+            Ok(x) => self.data.add_string(&x, off, len),
             Err(_) => {}  
         }
         return result;
@@ -219,22 +231,60 @@ impl _Blob {
         }
     }
 
-    pub fn add_string(&self, string: &str, off : u32)
+    pub fn add_string(&self, string: &str, off : u32, size : u32)
     {
         let mut stats = self.stats.borrow_mut();
         let string_off = &mut stats.string_offsets;
         match string_off.get(string) {
-            Some(x) => if *x != off {
-                stats.duplicate_count += 1;
-                println!("!!----- Same string different offset ------!!")
+            Some(x) => {
+                let (orig_off, count) = *x;
+                if orig_off != off {
+                    string_off.remove(string);
+                    string_off.insert(string.to_string(), (orig_off, count + size));
+                }
             },
-            None => {string_off.insert(string.to_string(), off);}
+            None => {string_off.insert(string.to_string(), (off, 0));}
         }
     }
 
     pub fn display_stats(&self)
     {
         let stats = self.stats.borrow_mut();
-        println!("Duplicate count {}", stats.duplicate_count);
+        let mut duplicate_count = 0;
+        for x in &stats.string_offsets {
+            let (string, (orig_off, count)) = x;
+            if *count > 1 {
+                duplicate_count += (count - 1);
+                println!("{} duplicated {} times", string, count);
+            }
+        }
+      
+        println!("Duplicate count {}", duplicate_count);
+
+        let mut unused = 0;
+        let mut currentRegion = BlobRegions::Invalid;
+        let mut pos = 0;
+        let mut regionStart = 0;
+
+        for x in &stats.regions {
+            
+            let reg = *x;
+
+            if reg == BlobRegions::Empty {
+                unused += 1;
+            }
+            if reg != currentRegion {
+                if pos > regionStart {
+                    println!("Region from {} to {} is {:?}", regionStart, pos-1, currentRegion);
+                    currentRegion = reg;
+                    regionStart = pos;
+                }
+            }
+            pos += 1;
+        }
+
+        if unused > 0 {
+            println!("{} bytes unused, {} wasted duplication", unused, duplicate_count);
+        }
     }
 }

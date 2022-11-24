@@ -23,14 +23,14 @@ pub struct MenuIndexIterator {
 
 impl MenuIndex {
     ///
-    /// V2 format does not have a MenuIndex,
+    /// V2 format does not have a MenuIndex, So create an pseudo one
     ///
     pub fn from_v2(fp: &mut FileBlob, root_font_family: u8) -> MenuIndex {
         // V2 there are no menu Indexes!
         // Read ParameterIndex
 
         let mut header = [0; 6];
-        fp.read_exact(&mut header, BlobRegions::Menus);
+        fp.read_exact(&mut header, BlobRegions::Parameters);
 
         let num_entries = little_endian_2_bytes(&header[0..2]);
         let max_str_len = little_endian_2_bytes(&header[2..4]);
@@ -72,7 +72,10 @@ impl MenuIndex {
         MenuIndex { menus }
     }
 
-    pub fn from_v3plus(fp: &mut FileBlob, font_family: u8) -> MenuIndex {
+    ///
+    /// Create a MenuIndex from v3 schema
+    ///
+    pub fn from_v3(fp: &mut FileBlob, font_family: u8) -> MenuIndex {
         let mut header = [0; 2];
         fp.read_exact(&mut header, BlobRegions::Menus);
 
@@ -87,7 +90,7 @@ impl MenuIndex {
 
         for (menu, offset) in tmp_info {
             fp.set_pos(offset);
-            let (param_index, caption_off, tooltip_off) = ParameterIndex::from(fp, 3, font_family);
+            let (param_index, caption_off, tooltip_off) = ParameterIndex::from_v3(fp, font_family);
             let menu_entry = MenuIndexEntry {
                 caption_off,
                 tooltip_off,
@@ -101,6 +104,40 @@ impl MenuIndex {
         }
         MenuIndex { menus }
     }
+
+    ///
+    /// Create a MenuIndex from v4 schema
+    ///
+    pub fn from_v4(fp: &mut FileBlob) -> MenuIndex {
+        let mut header = [0; 2];
+        fp.read_exact(&mut header, BlobRegions::Menus);
+
+        let num_menus = header[0];
+        let idx_entry_len = header[1];
+
+        let mut menus = HashMap::new();
+
+        Self::validate_schema(3, idx_entry_len);
+
+        let tmp_info = Self::read_v4_entries(fp, num_menus);
+
+        for (menu, caption_off, tooltip_off, offset) in tmp_info {
+            fp.set_pos(offset);
+            let param_index = ParameterIndex::from_v4(fp);
+            let menu_entry = MenuIndexEntry {
+                caption_off,
+                tooltip_off,
+                param_index: Rc::<ParameterIndex>::new(param_index),
+                blob: fp.freeze(),
+            };
+            let old = menus.insert(menu, menu_entry);
+            if old != None {
+                panic!("Duplicate menus found");
+            }
+        }
+        MenuIndex { menus }
+    }
+
 
     fn validate_schema(schema: u16, idx_entry_len: u8) {
         match schema {
@@ -123,6 +160,9 @@ impl MenuIndex {
         };
     }
 
+    ///
+    /// Read and return a temp list of V3 menu entries
+    ///
     fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32)> {
         let mut tmp_info = Vec::new();
 
@@ -137,6 +177,9 @@ impl MenuIndex {
         tmp_info
     }
 
+    ///
+    /// Read and return a temp list of V4 menu entries
+    ///
     fn read_v4_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32, u32, u32)> {
         let mut tmp_info = Vec::new();
 

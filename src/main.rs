@@ -7,7 +7,7 @@ pub mod fonts;
 pub mod keypadstrs;
 pub mod language;
 pub mod menus;
-pub mod mnemonics;
+pub mod enumerations;
 pub mod modes;
 pub mod parameters;
 pub mod products;
@@ -24,7 +24,8 @@ fn main() {
         let os_filename = path.unwrap().file_name();
         let filename = os_filename.into_string().unwrap();
         if filename.ends_with(".bin") {
-            let _lang_v2 = language::read_language_file(&filename, character_maps.clone());
+            let lang_v2 = language::read_language_file(&filename, character_maps.clone());
+            lang_v2.write_text_file(&(filename + ".txt"));
         }
         //        println!("Name {}", filename);
     }

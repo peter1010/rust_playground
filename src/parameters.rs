@@ -50,9 +50,13 @@ impl ParameterIndex {
         tmp_menus
     }
 
-    pub fn from(
+    ///
+    /// Read and create a V3 ParameterIndex. Also
+    /// check and remove parameter 255 which is a placeholder
+    /// for menu caption Id
+    ///
+    pub fn from_v3(
         fp: &mut FileBlob,
-        schema: u16,
         root_font_family: u8,
     ) -> (ParameterIndex, u32, u32) {
         let mut header = [0; 6];
@@ -69,7 +73,7 @@ impl ParameterIndex {
         let mut params = HashMap::new();
 
         if idx_entry_len != 0 {
-            Self::validate_schema(schema, idx_entry_len, max_str_len);
+            Self::validate_schema(3, idx_entry_len, max_str_len);
 
             for _i in 0..num_entries {
                 let (param, entry) = ParameterIndexEntry::load_v3(fp);
@@ -86,6 +90,38 @@ impl ParameterIndex {
             (ParameterIndex { params }, 0, 0)
         }
     }
+
+    ///
+    /// Read and create a V4 ParameterIndex.
+    ///
+    pub fn from_v4(
+        fp: &mut FileBlob
+    ) -> ParameterIndex {
+        let mut header = [0; 3];
+        fp.read_exact(&mut header, BlobRegions::Parameters);
+
+        let num_entries = little_endian_2_bytes(&header[0..2]);
+        let idx_entry_len = header[3];
+
+        let mut params = HashMap::new();
+
+        if idx_entry_len != 0 {
+            Self::validate_schema(4, idx_entry_len, 0);
+
+            for _i in 0..num_entries {
+                let (param, entry) = ParameterIndexEntry::load_v4(fp);
+                let old = params.insert(param, entry);
+                if old != None {
+                    panic!("Two entries with same parameter!");
+                }
+            }
+
+            ParameterIndex { params }
+        } else {
+            ParameterIndex { params }
+        }
+    }
+
 
     ///
     /// Parameter 255 is a fake parameter used to hold menu caption & tooltip
@@ -146,6 +182,26 @@ impl IntoIterator for &ParameterIndex {
 }
 
 impl ParameterIndexEntry {
+    fn load_v4(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
+        let mut buf = [0; 8];
+        fp.read_exact(&mut buf, BlobRegions::Products);
+        let param = buf[0];
+        if buf[1] != 0 {
+            panic!("Out of range param {}", buf[0]);
+        };
+        let offset = little_endian_3_bytes(&buf[2..5]);
+        if offset == 0 {
+            println!("Empty slot");
+        };
+        let param_entry = ParameterIndexEntry {
+            caption_off: offset,
+            tooltip_off: 0,
+            blob: fp.freeze(),
+        };
+        (param, param_entry)
+    }
+
+
     fn load_v3(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
         let mut buf = [0; 5];
         fp.read_exact(&mut buf, BlobRegions::Products);

@@ -6,11 +6,18 @@ use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_end
 use crate::blob::{FileBlob, BlobRegions};
 use crate::modes::ModeIndex;
 
+///
+/// ProductIndex is a dictionary of Products
+///
 pub struct ProductIndex {
     products: HashMap<u16, ProductIndexEntry>,
 }
 
+///
+/// ProductIndexEntry is a entry in the dictionary of Products
+///
 pub struct ProductIndexEntry {
+    product_id : u16, // Product Id is also the Key in the Dictionary in ProductIndex
     derivative_id_low: u16,
     derivative_id_high: u16,
     flags: u16,
@@ -25,6 +32,10 @@ pub struct ProductIndexIterator {
 /// Product Index
 ///
 impl ProductIndex {
+
+    ///
+    /// Create a ProductIndex from the FileBlob
+    ///
     pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ProductIndex {
         let mut header = [0; 2];
         fp.read_exact(&mut header, BlobRegions::Products);
@@ -33,7 +44,6 @@ impl ProductIndex {
         let num_products = header[0];
         let idx_entry_len = header[1];
 
-        //        println!("Number of products = {}", num_products);
 
         Self::validate_schema(schema, idx_entry_len, num_products);
 
@@ -58,13 +68,15 @@ impl ProductIndex {
             let mode_index = ModeIndex::from(fp, schema, font_family);
             products.insert(
                 product_id,
-                ProductIndexEntry::new(derivative_id_low, derivative_id_high, flags, mode_index),
+                ProductIndexEntry::new(product_id, derivative_id_low, derivative_id_high, flags, mode_index),
             );
         }
 
         ProductIndex { products }
     }
 
+    ///
+    /// Valid the Product_Index
     fn validate_schema(schema: u16, idx_entry_len: u8, num_of_products: u8) {
         match schema {
             2 => {
@@ -90,6 +102,9 @@ impl ProductIndex {
         }
     }
 
+    ///
+    /// Parse V2 Product Index Entries intinally into a list of tuples
+    ///
     fn read_v2_entries(
         fp: &mut FileBlob,
         num_entries: u8,
@@ -123,6 +138,9 @@ impl ProductIndex {
         tmp_info
     }
 
+    ///
+    /// Parse V3 Product Index Entries intinally into a list of tuples
+    ///
     fn read_v3_entries(
         fp: &mut FileBlob,
         num_entries: u8,
@@ -172,12 +190,14 @@ impl IntoIterator for &ProductIndex {
 
 impl ProductIndexEntry {
     fn new(
+        product_id : u16,
         derivative_id_low: u16,
         derivative_id_high: u16,
         flags: u16,
         mode_index: ModeIndex,
     ) -> ProductIndexEntry {
         ProductIndexEntry {
+            product_id,
             derivative_id_low,
             derivative_id_high,
             flags,
@@ -210,6 +230,7 @@ impl ProductIndexEntry {
 impl Clone for ProductIndexEntry {
     fn clone(&self) -> ProductIndexEntry {
         ProductIndexEntry {
+            product_id: self.product_id,
             derivative_id_low: self.derivative_id_low,
             derivative_id_high: self.derivative_id_high,
             flags: self.flags,

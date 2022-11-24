@@ -60,7 +60,7 @@ impl ModeIndex {
                 for (mode_num, offset) in tmp_info {
                     if offset != 0 {
                         fp.set_pos(offset);
-                        let menu_index = MenuIndex::from_v3plus(fp, font_family);
+                        let menu_index = MenuIndex::from_v3(fp, font_family);
                         modes.insert(
                             mode_num,
                             ModeIndexEntry {
@@ -70,6 +70,21 @@ impl ModeIndex {
                     }
                 }
             }
+            4 => {
+                for (mode_num, offset) in tmp_info {
+                    if offset != 0 {
+                        fp.set_pos(offset);
+                        let menu_index = MenuIndex::from_v4(fp);
+                        modes.insert(
+                            mode_num,
+                            ModeIndexEntry {
+                                menu_index: Rc::<MenuIndex>::new(menu_index),
+                            },
+                        );
+                    }
+                }
+            }
+ 
             _ => panic!("Invalid format"),
         };
 

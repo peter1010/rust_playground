@@ -10,14 +10,15 @@ use crate::conversion::{
 use crate::blob::{FileBlob, BlobRegions};
 use crate::characters::CharacterMaps;
 use crate::keypadstrs::KeypadStrIndex;
-use crate::mnemonics::MnemonicIndex;
+//use crate::mnemonics::MnemonicIndex;
 use crate::products::ProductIndex;
 use crate::units::UnitsIndex;
+use crate::enumerations::EnumerationsIndex;
 
 pub struct Language {
     //    lang_name : [u8; 16],
     product_index: ProductIndex,
-    enumeration_index: MnemonicIndex,
+    enumeration_index: EnumerationsIndex,
     keypad_str_index: KeypadStrIndex,
     units_index: UnitsIndex,
 }
@@ -77,7 +78,7 @@ impl Language {
         let product_index = ProductIndex::from(&mut fp, schema, font_family);
 
         fp.set_pos(offsets[1]);
-        let enumeration_index = MnemonicIndex::from(&mut fp, schema, font_family);
+        let enumeration_index = EnumerationsIndex::from(&mut fp, schema, font_family);
 
         let keypad_str_index = if offsets[2] > 0 {
             fp.set_pos(offsets[2]);
@@ -213,6 +214,15 @@ impl Language {
             _ => panic!("Invalid format"),
         };
         return offsets;
+    }
+
+    pub fn write_text_file(&self, filepath: &str) {
+        let mut fp = match File::create(filepath) {
+            Ok(fp) => fp,
+            Err(_) => {
+                panic!("Failed to open {}", String::from(filepath));
+            }
+        };
     }
 }
 
