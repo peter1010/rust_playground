@@ -2,25 +2,51 @@ use std::collections::HashMap;
 
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
-pub struct MnemonicIndex {
-    values: HashMap<u8, MnemonicIndexEntry>,
+pub struct MnemonicIndex 
+{
+    values: HashMap<i32, MnemonicIndexEntry>,
 }
 
-pub struct MnemonicIndexEntry {
+pub struct MnemonicIndexEntry 
+{
+    value : i32,
     caption_off: u32,
     tooltip_off: u32,
     blob: RawBlob,
 }
 
-pub struct MnemonicIndexIterator {
-    values: Vec<(u8, MnemonicIndexEntry)>,
+pub struct MnemonicIndexIterator 
+{
+    values: Vec<(i32, MnemonicIndexEntry)>,
 }
 
-impl MnemonicIndex {
+impl MnemonicIndex 
+{
+    pub fn empty() -> MnemonicIndex
+    {
+        let mut values = HashMap::<i32, MnemonicIndexEntry>::new();
+        MnemonicIndex
+        {
+            values
+        }
+    }
+
+    pub fn new(values: HashMap::<i32, MnemonicIndexEntry>) -> MnemonicIndex
+    {
+        for entry in &values {
+            let value = entry.1.value;
+
+            assert_eq!(*entry.0, value);
+        }
+        MnemonicIndex { values }
+    }
+
+
     ///
     /// Read and create a V4 MnemonicIndex.
     ///
-    pub fn from(fp: &mut FileBlob) -> MnemonicIndex {
+    pub fn from(fp: &mut FileBlob) -> MnemonicIndex 
+    {
         let num_entries = fp.read_le_2bytes(BlobRegions::Mnemonics);
         let idx_entry_len = fp.read_byte(BlobRegions::Mnemonics);
 
@@ -41,9 +67,9 @@ impl MnemonicIndex {
                 }
             }
 
-            MnemonicIndex { values }
+            MnemonicIndex::new(values)
         } else {
-            MnemonicIndex { values }
+            MnemonicIndex::new(values)
         }
     }
 
@@ -64,7 +90,8 @@ impl MnemonicIndex {
     }
 }
 
-impl Clone for MnemonicIndex{
+impl Clone for MnemonicIndex
+{
     fn clone(&self) -> MnemonicIndex {
         let mut values = self.values.clone();
 
@@ -80,8 +107,9 @@ impl Clone for MnemonicIndex{
 }
 
 
-impl IntoIterator for &MnemonicIndex {
-    type Item = (u8, MnemonicIndexEntry);
+impl IntoIterator for &MnemonicIndex 
+{
+    type Item = (i32, MnemonicIndexEntry);
     type IntoIter = MnemonicIndexIterator;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -99,23 +127,32 @@ impl IntoIterator for &MnemonicIndex {
     }
 }
 
-impl MnemonicIndexEntry {
-    fn load(fp: &mut FileBlob) -> (u8, MnemonicIndexEntry) {
-        let param = fp.read_byte(BlobRegions::Products);
-        let caption_off = fp.read_le_3bytes(BlobRegions::Products);
-        let tooltip_off = fp.read_le_3bytes(BlobRegions::Products);
+impl MnemonicIndexEntry 
+{
+    fn load(fp: &mut FileBlob) -> (i32, MnemonicIndexEntry) 
+    {
+        let value = fp.read_le_4bytes(BlobRegions::Mnemonics);
+        let caption_off = fp.read_le_3bytes(BlobRegions::Mnemonics);
+        let tooltip_off = fp.read_le_3bytes(BlobRegions::Mnemonics);
+
+        let value : i32 = if value > 0x7FFFFFF {
+            -((0xFFFFFFFF - value) as i32)
+        } else {
+            value as i32
+        };
 
 //		println!("{} => {} {} {}", param, caption_off, tooltip_off, mnemonic_off);
 
         if caption_off == 0 {
             println!("Empty parameter?");
         };
-        let param_entry = MnemonicIndexEntry {
+        let entry = MnemonicIndexEntry {
+            value,
             caption_off: caption_off,
             tooltip_off: tooltip_off,
             blob: fp.freeze(),
         };
-        (param, param_entry)
+        (value, entry)
     }
 
 
@@ -144,6 +181,7 @@ impl PartialEq for MnemonicIndexEntry {
 impl Clone for MnemonicIndexEntry {
     fn clone(&self) -> MnemonicIndexEntry {
         MnemonicIndexEntry {
+            value : self.value,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
             blob: self.blob.clone(),
@@ -151,8 +189,9 @@ impl Clone for MnemonicIndexEntry {
     }
 }
 
-impl Iterator for MnemonicIndexIterator {
-    type Item = (u8, MnemonicIndexEntry);
+impl Iterator for MnemonicIndexIterator 
+{
+    type Item = (i32, MnemonicIndexEntry);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.values.pop()

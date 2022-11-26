@@ -121,6 +121,12 @@ impl Language {
                             Ok(x) => println!("- - - P.{} => {}", param, x),
                             Err(x) => panic!("- - - P.{} => {}", param, x),
                         };
+                        for (value, details) in details.get_mnemonics() {
+                            match details.to_string() {
+                                Ok(x) => println!("- - - - {} => {}", value, x),
+                                Err(x) => panic!("- - - - {} => {}", value, x),
+                            };
+                        }
                     }
                 }
             }

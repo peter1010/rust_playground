@@ -1,23 +1,47 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::blob::{FileBlob, BlobRegions};
 use crate::menus::MenuIndex;
 
-pub struct ModeIndex {
+pub struct ModeIndex
+{
     modes: HashMap<u8, ModeIndexEntry>,
 }
 
-pub struct ModeIndexEntry {
+pub struct ModeIndexEntry 
+{
+    mode_num: u8,
     menu_index: Rc<MenuIndex>,
 }
 
-pub struct ModeIndexIterator {
+pub struct ModeIndexIterator 
+{
     items: Vec<(u8, ModeIndexEntry)>,
 }
 
-impl ModeIndex {
-    pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ModeIndex {
+
+impl ModeIndex 
+{
+    pub fn new(modes: HashMap<u8, ModeIndexEntry>) -> ModeIndex 
+    {
+        let mut hits = HashSet::new();
+
+        for entry in &modes {
+            let mode_num = entry.1.mode_num;
+
+            assert_eq!(*entry.0, mode_num);
+
+            if hits.contains(&mode_num) {
+                panic!("Duplicate modes detected");
+            }
+            hits.insert(mode_num);
+        }
+        ModeIndex { modes }
+    }
+
+    pub fn create_from_file(fp: &mut FileBlob, schema: u16, font_family: u8) -> ModeIndex 
+    {
         let num_modes = fp.read_byte(BlobRegions::Modes);
         let idx_entry_len = fp.read_byte(BlobRegions::Modes);
 
@@ -30,67 +54,36 @@ impl ModeIndex {
             _ => panic!("Invalid format"),
         };
 
-        //        if tmp_info.len() > 1 {
-        //            println!("- Number of modes = {}", tmp_info.len());
-        //        }
-
         let mut modes = HashMap::new();
+        
+        for (mode_num, offset) in tmp_info {
+            if offset != 0 {
+                fp.set_pos(offset);
 
-        match schema {
-            2 => {
-                for (mode_num, offset) in tmp_info {
-                    if offset != 0 {
-                        fp.set_pos(offset);
-                        let menu_index = MenuIndex::from_v2(fp, font_family);
-                        modes.insert(
-                            mode_num,
-                            ModeIndexEntry {
-                                menu_index: Rc::<MenuIndex>::new(menu_index),
-                            },
-                        );
-                    }
-                }
+                let menu_index = match schema {
+                    2 => MenuIndex::from_v2(fp, font_family),
+                    3 => MenuIndex::from_v3(fp, font_family),
+                    4 => MenuIndex::from_v4(fp),
+                    _ => panic!("Invalid format")
+                };
+                modes.insert(
+                    mode_num,
+                    ModeIndexEntry::new(mode_num, menu_index)
+                );
+            } else {
+                panic!("Unexpected empty mode");
             }
-            3 => {
-                for (mode_num, offset) in tmp_info {
-                    if offset != 0 {
-                        fp.set_pos(offset);
-                        let menu_index = MenuIndex::from_v3(fp, font_family);
-                        modes.insert(
-                            mode_num,
-                            ModeIndexEntry {
-                                menu_index: Rc::<MenuIndex>::new(menu_index),
-                            },
-                        );
-                    }
-                }
-            }
-            4 => {
-                for (mode_num, offset) in tmp_info {
-                    if offset != 0 {
-                        fp.set_pos(offset);
-                        let menu_index = MenuIndex::from_v4(fp);
-                        modes.insert(
-                            mode_num,
-                            ModeIndexEntry {
-                                menu_index: Rc::<MenuIndex>::new(menu_index),
-                            },
-                        );
-                    }
-                }
-            }
- 
-            _ => panic!("Invalid format"),
-        };
-
-        ModeIndex { modes }
+        }
+        ModeIndex::new(modes)
     }
 
-    pub fn get_num_modes(&self) -> usize {
+    pub fn get_num_modes(&self) -> usize
+    {
         self.modes.len()
     }
 
-    fn validate_schema(schema: u16, idx_entry_len: u8, num_modes: u8) {
+    fn validate_schema(schema: u16, idx_entry_len: u8, num_modes: u8) 
+    {
         match schema {
             2 => {
                 if idx_entry_len != 5 {
@@ -109,6 +102,9 @@ impl ModeIndex {
             }
             _ => panic!("Invalid format"),
         };
+        if num_modes < 1 {
+            panic!("Too few modes");
+        }
         if num_modes > 4 {
             panic!("Too many modes");
         }
@@ -156,7 +152,8 @@ impl ModeIndex {
     }
 }
 
-impl IntoIterator for &ModeIndex {
+impl IntoIterator for &ModeIndex 
+{
     type Item = (u8, ModeIndexEntry);
     type IntoIter = ModeIndexIterator;
 
@@ -175,7 +172,17 @@ impl IntoIterator for &ModeIndex {
     }
 }
 
-impl ModeIndexEntry {
+impl ModeIndexEntry 
+{
+    pub fn new(mode_num : u8, menu_index : MenuIndex) -> ModeIndexEntry
+    {
+        ModeIndexEntry
+        {
+            mode_num,
+            menu_index: Rc::<MenuIndex>::new(menu_index),
+        }
+    }
+
     pub fn to_string(&self, mode: u8) -> Result<String, String> {
         Result::Ok(format!(
             "Mode '{}' num of menus = {}",
@@ -199,6 +206,7 @@ impl ModeIndexEntry {
 impl Clone for ModeIndexEntry {
     fn clone(&self) -> ModeIndexEntry {
         ModeIndexEntry {
+            mode_num : self.mode_num,
             menu_index: self.menu_index.clone(),
         }
     }

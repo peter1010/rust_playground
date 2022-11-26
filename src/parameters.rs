@@ -1,16 +1,18 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 use crate::mnemonics::MnemonicIndex;
+use std::rc::Rc;
 
 pub struct ParameterIndex {
     params: HashMap<u8, ParameterIndexEntry>,
 }
 
 pub struct ParameterIndexEntry {
+    param_num: u8,
     caption_off: u32,
     tooltip_off: u32,
-    mnemonic: Option<MnemonicIndex>,
+    mnemonic: Rc<MnemonicIndex>,
     blob: RawBlob,
 }
 
@@ -19,15 +21,31 @@ pub struct ParameterIndexIterator {
 }
 
 impl ParameterIndex {
+
+    pub fn new(params: HashMap<u8, ParameterIndexEntry>) -> ParameterIndex
+    {
+        let mut hits = HashSet::<u8>::new();
+
+        for entry in &params {
+            let param_num = entry.1.param_num;
+
+            assert_eq!(*entry.0, param_num);
+
+            if hits.contains(&param_num) {
+                panic!("Duplicate parameter number found");
+            }
+            hits.insert(param_num);
+        }
+        ParameterIndex { params }
+    }
+
     ///
     /// V2 does not have menus, all parameters are together
     /// So read all parameters, create parameter indexes (as if we were V3 format)
     /// And return a parameter index per menu
     ///
-    pub fn read_v2_entries(
-        fp: &mut FileBlob,
-        num_entries: u16,
-    ) -> HashMap<u8, ParameterIndex> {
+    pub fn read_v2_entries(fp: &mut FileBlob, num_entries: u16) -> HashMap<u8, ParameterIndex> 
+    {
         let mut tmp_menus = HashMap::<u8, ParameterIndex>::new();
 
         for _i in 0..num_entries {
@@ -40,10 +58,7 @@ impl ParameterIndex {
                     tmp_menus.insert(menu, new);
                 }
                 Some(item) => {
-                    let old = item.params.insert(param, entry);
-                    if old != None {
-                        panic!("Two entries with same param!");
-                    }
+                    item.params.insert(param, entry);
                 }
             };
         }
@@ -71,17 +86,14 @@ impl ParameterIndex {
 
             for _i in 0..num_entries {
                 let (param, entry) = ParameterIndexEntry::load_v3(fp);
-                let old = params.insert(param, entry);
-                if old != None {
-                    panic!("Two entries with same parameter!");
-                }
+                params.insert(param, entry);
             }
 
             let (caption_off, tooltip_off) = Self::check_param255(&mut params);
             let param_index = ParameterIndex { params };
             (param_index, caption_off, tooltip_off)
         } else {
-            (ParameterIndex { params }, 0, 0)
+            (ParameterIndex::new(params), 0, 0)
         }
     }
 
@@ -107,28 +119,21 @@ impl ParameterIndex {
 
                 let mnemonic = if mnemonic_off > 0 {
                     fp.set_pos(mnemonic_off);
-                    Option::Some(MnemonicIndex::from(fp))
+                    MnemonicIndex::from(fp)
                 } else {
-                    Option::None
+                    MnemonicIndex::empty()
                 };
 
 //				println!("{}", param);
 
-                let old = params.insert(param, ParameterIndexEntry {
-                    caption_off: caption_off,
-                    tooltip_off: tooltip_off,
-                    mnemonic : mnemonic,
-                    blob: fp.freeze()
-                });
- 
-                if old != None {
-                    panic!("Two entries with same parameter! param={}", param);
-                }
+                params.insert(param, ParameterIndexEntry::new(
+                    param, caption_off, tooltip_off,
+                    mnemonic, fp));
             }
 
-            ParameterIndex { params }
+            ParameterIndex::new(params)
         } else {
-            ParameterIndex { params }
+            ParameterIndex::new(params)
         }
     }
 
@@ -181,7 +186,7 @@ impl ParameterIndex {
     fn read_v4_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32, u32, u32)> {
         let mut tmp_info = Vec::new();
 
-        for i in 0..num_entries {
+        for _i in 0..num_entries {
             let param = fp.read_byte(BlobRegions::Parameters);
             let caption_off = fp.read_le_3bytes(BlobRegions::Menus);
             let tooltip_off = fp.read_le_3bytes(BlobRegions::Menus);
@@ -215,6 +220,19 @@ impl IntoIterator for &ParameterIndex {
 
 impl ParameterIndexEntry {
 
+
+    fn new(param_num: u8, caption_off :u32, tooltip_off:u32, mnemonic : MnemonicIndex, fp : & mut FileBlob)
+    -> ParameterIndexEntry
+    {
+        ParameterIndexEntry {
+            param_num,
+            caption_off: caption_off,
+            tooltip_off: tooltip_off,
+            mnemonic : Rc::new(mnemonic),
+            blob: fp.freeze()
+        }
+    }
+
     fn load_v3(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
         let param = fp.read_le_2bytes(BlobRegions::Parameters);
         if param > 255  {
@@ -224,12 +242,10 @@ impl ParameterIndexEntry {
         if offset == 0 {
             println!("Empty slot");
         };
-        let param_entry = ParameterIndexEntry {
-            caption_off: offset,
-            tooltip_off: 0,
-            mnemonic : Option::None,
-            blob: fp.freeze(),
-        };
+        let param_entry = ParameterIndexEntry::new(
+            param as u8, offset, 0,
+            MnemonicIndex::empty(), fp
+        );
         (param as u8, param_entry)
     }
 
@@ -237,12 +253,11 @@ impl ParameterIndexEntry {
         let param = fp.read_byte(BlobRegions::Parameters);
         let menu = fp.read_byte(BlobRegions::Parameters);
         let offset = fp.read_le_4bytes(BlobRegions::Parameters);
-        let param_entry = ParameterIndexEntry {
-            caption_off: offset,
-            tooltip_off: 0,
-            mnemonic : Option::None,
-            blob: fp.freeze(),
-        };
+        let param_entry = ParameterIndexEntry::new(
+            param, offset, 0,
+            MnemonicIndex::empty(),
+            fp
+        );
         (menu, param, param_entry)
     }
 
@@ -260,6 +275,11 @@ impl ParameterIndexEntry {
         };
         return Result::Ok(str1);
     }
+
+    pub fn get_mnemonics(&self) -> &MnemonicIndex
+    {
+        &self.mnemonic
+    }
 }
 
 impl PartialEq for ParameterIndexEntry {
@@ -270,15 +290,11 @@ impl PartialEq for ParameterIndexEntry {
 
 impl Clone for ParameterIndexEntry {
     fn clone(&self) -> ParameterIndexEntry {
-        let mnemonic = match &self.mnemonic {
-            Some(x) => Option::Some(x.clone()),
-            None => Option::None
-        };
-
         ParameterIndexEntry {
+            param_num: self.param_num,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
-            mnemonic: mnemonic,
+            mnemonic: self.mnemonic.clone(),
             blob: self.blob.clone(),
         }
     }

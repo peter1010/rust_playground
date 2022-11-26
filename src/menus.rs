@@ -1,25 +1,47 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 use crate::parameters::ParameterIndex;
 
-pub struct MenuIndex {
+pub struct MenuIndex 
+{
     menus: HashMap<u8, MenuIndexEntry>,
 }
 
-pub struct MenuIndexEntry {
+pub struct MenuIndexEntry 
+{
+    menu_num : u8,
     caption_off: u32,
     tooltip_off: u32,
     param_index: Rc<ParameterIndex>,
     blob: RawBlob,
 }
 
-pub struct MenuIndexIterator {
+pub struct MenuIndexIterator
+{
     items: Vec<(u8, MenuIndexEntry)>,
 }
 
 impl MenuIndex {
+
+    pub fn new(menus : HashMap<u8, MenuIndexEntry>) -> MenuIndex
+    {
+        let mut hits = HashSet::<u8>::new();
+
+        for entry in &menus {
+            let menu_num = entry.1.menu_num;
+
+            assert_eq!(*entry.0, menu_num);
+            
+            if hits.contains(&menu_num) {
+                panic!("Duplicate menus detected");
+            }
+            hits.insert(menu_num);
+        }
+        MenuIndex { menus }
+    }
+
     ///
     /// V2 format does not have a MenuIndex, So create an pseudo one
     ///
@@ -39,32 +61,32 @@ impl MenuIndex {
         ParameterIndex::validate_schema(2, idx_entry_len, max_str_len);
 
         // Create menus anyway...
-        let mut tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries);
+        let tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries);
 
-        let mut menus = HashMap::new();
-        let mut keys: Vec<u8> = tmp_menus.keys().cloned().collect();
-        keys.sort();
+        let mut menus = HashMap::<u8, MenuIndexEntry>::new();
 
-        for menu in keys {
-            if let Some(mut param_index) = tmp_menus.remove(&menu) {
-                let (caption_off, tooltip_off) = param_index.self_check_param255();
+        for entry in tmp_menus {
+            let menu_num = entry.0;
+            let mut param_index = entry.1;
+
+            let (caption_off, tooltip_off) = param_index.self_check_param255();
                 //                let temp = param_index.param_list_as_string();
                 //              println!("- - Menu {}", menu);
                 //                println!("- - - Params {}", temp);
 
-                menus.insert(
-                    menu,
-                    MenuIndexEntry {
+            menus.insert(
+                menu_num,
+                MenuIndexEntry::new(
+                        menu_num,
                         caption_off,
                         tooltip_off,
-                        param_index: Rc::<ParameterIndex>::new(param_index),
-                        blob: fp.freeze(),
-                    },
-                );
-            }
+                        param_index,
+                        fp
+                    ),
+            );
         }
 
-        MenuIndex { menus }
+        MenuIndex::new(menus)
     }
 
     ///
@@ -80,21 +102,19 @@ impl MenuIndex {
 
         let tmp_info = Self::read_v3_entries(fp, num_menus);
 
-        for (menu, offset) in tmp_info {
+        for (menu_num, offset) in tmp_info {
             fp.set_pos(offset);
             let (param_index, caption_off, tooltip_off) = ParameterIndex::from_v3(fp, font_family);
-            let menu_entry = MenuIndexEntry {
+            let menu_entry = MenuIndexEntry::new(
+                menu_num,
                 caption_off,
                 tooltip_off,
-                param_index: Rc::<ParameterIndex>::new(param_index),
-                blob: fp.freeze(),
-            };
-            let old = menus.insert(menu, menu_entry);
-            if old != None {
-                panic!("Duplicate menus found");
-            }
+                param_index,
+                fp
+            );
+            menus.insert(menu_num, menu_entry);
         }
-        MenuIndex { menus }
+        MenuIndex::new(menus)
     }
 
     ///
@@ -110,22 +130,20 @@ impl MenuIndex {
 
         let tmp_info = Self::read_v4_entries(fp, num_menus);
 
-        for (menu, caption_off, tooltip_off, offset) in tmp_info {
-//			println!("{} => {}", menu, offset);
+        for (menu_num, caption_off, tooltip_off, offset) in tmp_info {
+//			println!("{} => {}", menu_num, offset);
             fp.set_pos(offset);
             let param_index = ParameterIndex::from_v4(fp);
-            let menu_entry = MenuIndexEntry {
+            let menu_entry = MenuIndexEntry::new(
+                menu_num,
                 caption_off,
                 tooltip_off,
-                param_index: Rc::<ParameterIndex>::new(param_index),
-                blob: fp.freeze(),
-            };
-            let old = menus.insert(menu, menu_entry);
-            if old != None {
-                panic!("Duplicate menus found");
-            }
+                param_index,
+                fp,
+            );
+            menus.insert(menu_num, menu_entry);
         }
-        MenuIndex { menus }
+        MenuIndex::new(menus)
     }
 
 
@@ -208,6 +226,19 @@ impl IntoIterator for &MenuIndex {
 }
 
 impl MenuIndexEntry {
+
+    pub fn new(menu_num : u8, caption_off : u32, tooltip_off : u32, param_index : ParameterIndex, fp : & mut FileBlob)
+    -> MenuIndexEntry
+    {
+        MenuIndexEntry {
+            menu_num,
+            caption_off,
+            tooltip_off,
+            param_index: Rc::<ParameterIndex>::new(param_index),
+            blob: fp.freeze(),
+        }
+    }
+ 
     pub fn to_string(&self) -> Result<String, String> {
         let str1 = match self.blob.get_string(self.caption_off, 32) {
             Ok(x) => x,
@@ -234,9 +265,11 @@ impl PartialEq for MenuIndexEntry {
     }
 }
 
-impl Clone for MenuIndexEntry {
+impl Clone for MenuIndexEntry 
+{
     fn clone(&self) -> MenuIndexEntry {
         MenuIndexEntry {
+            menu_num: self.menu_num,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
             param_index: self.param_index.clone(),

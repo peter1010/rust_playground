@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::blob::{FileBlob, BlobRegions};
@@ -32,7 +32,35 @@ pub struct ProductIndexIterator
 ///
 /// Product Index
 ///
-impl ProductIndex {
+impl ProductIndex
+{
+    pub fn new(products: HashMap<u16, ProductIndexEntry>) -> ProductIndex
+    {
+        let mut ranges = HashMap::<u16, (u16, u16)>::new();
+
+        for entry in &products {
+
+            let product_id = entry.1.product_id;
+            let low = entry.1.derivative_id_low;
+            let high = entry.1.derivative_id_high;
+
+            assert_eq!(*entry.0, product_id);
+
+            match ranges.get(&product_id) {
+                Some(x) => {
+                    let (_low, _high) = *x;
+                    if (_low == low) && (_high == high) {
+                        panic!("Duplicate products detected");
+                    } 
+                }
+                None => {
+                    ranges.insert(product_id, (low, high));
+                }
+            }
+        }
+ 
+        ProductIndex { products }
+    }
 
     ///
     /// Create a ProductIndex from the FileBlob
@@ -56,26 +84,22 @@ impl ProductIndex {
 
         for info in tmp_info {
             let (product_id, derivative_id_low, derivative_id_high, flags, offset) = info;
-            //            if derivative_id_high > derivative_id_low {
-            //                println!("Product = {} : {} - {}", product_id, derivative_id_low, derivative_id_high);
-            //            } else {
-            //                println!("Product = {} : {}", product_id, derivative_id_low);
-            //            }
-
+            
             fp.set_pos(offset);
-            let mode_index = ModeIndex::from(fp, schema, font_family);
+            let mode_index = ModeIndex::create_from_file(fp, schema, font_family);
             products.insert(
                 product_id,
                 ProductIndexEntry::new(product_id, derivative_id_low, derivative_id_high, flags, mode_index),
             );
         }
 
-        ProductIndex { products }
+        ProductIndex::new(products)
     }
 
     ///
     /// Valid the Product_Index
-    fn validate_schema(schema: u16, idx_entry_len: u8, num_of_products: u8) {
+    fn validate_schema(schema: u16, idx_entry_len: u8, num_of_products: u8) 
+    {
         match schema {
             2 => {
                 if idx_entry_len != 8 {
@@ -95,6 +119,10 @@ impl ProductIndex {
  
             _ => panic!("Invalid format"),
         };
+
+        if num_of_products < 10 {
+            panic!("Seems none many products!");
+        }
         if num_of_products > 40 {
             panic!("Seems a lot of products!");
         }
@@ -103,30 +131,26 @@ impl ProductIndex {
     ///
     /// Parse V2 Product Index Entries intinally into a list of tuples
     ///
-    fn read_v2_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u16, u16, u16, u16, u32)> {
+    fn read_v2_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u16, u16, u16, u16, u32)> 
+    {
         // Language file V2 uses 32 bit offsets
         let mut tmp_info = Vec::new();
-        let mut hits = HashSet::new();
 
         for _i in 0..num_entries {
             let flags = fp.read_byte(BlobRegions::Products) as u16;
             if flags > 15 {
                 panic!("Invalid flags in product index")
             }
-            let derivative_id_low = fp.read_byte(BlobRegions::Products) as u16;
-            let derivative_id_high = derivative_id_low;
+            let derivative_id = fp.read_byte(BlobRegions::Products) as u16;
             let product_id = fp.read_le_2bytes(BlobRegions::Products);
-            if !hits.insert((product_id, derivative_id_low)) {
-                panic!("Duplicate product found!");
-            }
-            let offset = fp.read_le_4bytes(BlobRegions::Products);
+            let offset_to_modes = fp.read_le_4bytes(BlobRegions::Products);
 
             tmp_info.push((
                 product_id,
-                derivative_id_low,
-                derivative_id_high,
+                derivative_id,
+                derivative_id,
                 flags,
-                offset,
+                offset_to_modes,
             ))
         }
         tmp_info
@@ -135,30 +159,32 @@ impl ProductIndex {
     ///
     /// Parse V3 Product Index Entries intinally into a list of tuples
     ///
-    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u16, u16, u16, u16, u32)> {
+    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u16, u16, u16, u16, u32)> 
+    {
         // Language file >= V3 uses 24 bit offsets
         let mut tmp_info = Vec::new();
-        //        let mut hits = HashSet::new();
 
         for _i in 0..num_entries {
             let product_id = fp.read_le_2bytes(BlobRegions::Products);
             let derivative_id_low = fp.read_le_2bytes(BlobRegions::Products);
             let derivative_id_high = fp.read_le_2bytes(BlobRegions::Products);
             let flags = fp.read_le_2bytes(BlobRegions::Products);
-            let offset = fp.read_le_3bytes(BlobRegions::Products);
+            let offset_to_modes = fp.read_le_3bytes(BlobRegions::Products);
+
             tmp_info.push((
                 product_id,
                 derivative_id_low,
                 derivative_id_high,
                 flags,
-                offset,
+                offset_to_modes,
             ))
         }
         tmp_info
     }
 }
 
-impl IntoIterator for &ProductIndex {
+impl IntoIterator for &ProductIndex 
+{
     type Item = (u16, ProductIndexEntry);
     type IntoIter = ProductIndexIterator;
 
@@ -177,14 +203,17 @@ impl IntoIterator for &ProductIndex {
     }
 }
 
-impl ProductIndexEntry {
-    fn new(
-        product_id : u16,
-        derivative_id_low: u16,
-        derivative_id_high: u16,
-        flags: u16,
-        mode_index: ModeIndex,
+impl ProductIndexEntry 
+{
+    fn new(product_id : u16, derivative_id_low: u16, derivative_id_high: u16, flags: u16, mode_index: ModeIndex,
     ) -> ProductIndexEntry {
+            //            if derivative_id_high > derivative_id_low {
+            //                println!("Product = {} : {} - {}", product_id, derivative_id_low, derivative_id_high);
+            //            } else {
+            //                println!("Product = {} : {}", product_id, derivative_id_low);
+            //            }
+
+
         ProductIndexEntry {
             product_id,
             derivative_id_low,
@@ -216,7 +245,8 @@ impl ProductIndexEntry {
     }
 }
 
-impl Clone for ProductIndexEntry {
+impl Clone for ProductIndexEntry 
+{
     fn clone(&self) -> ProductIndexEntry {
         ProductIndexEntry {
             product_id: self.product_id,
@@ -228,7 +258,8 @@ impl Clone for ProductIndexEntry {
     }
 }
 
-impl Iterator for ProductIndexIterator {
+impl Iterator for ProductIndexIterator
+{
     type Item = (u16, ProductIndexEntry);
 
     fn next(&mut self) -> Option<Self::Item> {
