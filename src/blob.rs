@@ -69,6 +69,12 @@ impl FileBlob {
         self.data.add_region(pos, pos + to_read, region)
     }
 
+    pub fn read_le_4bytes(&mut self, region: BlobRegions) -> u32 {
+		let mut values = [0; 4];
+   		self.read_exact(&mut values, region);
+		return (values[0] as u32) | ((values[1] as u32) << 8) | ((values[2] as u32) << 16) | ((values[3] as u32) << 24);
+	}
+	
 	pub fn read_le_3bytes(&mut self, region: BlobRegions) -> u32 {
 		let mut values = [0; 3];
    		self.read_exact(&mut values, region);
@@ -274,7 +280,7 @@ impl _Blob {
         for x in &stats.string_offsets {
             let (string, (orig_off, count)) = x;
             if *count > 1 {
-                duplicate_count += (count - 1);
+                duplicate_count += count - 1;
                 println!("{} duplicated {} times", string, count);
             }
         }
@@ -282,9 +288,9 @@ impl _Blob {
         println!("Duplicate count {}", duplicate_count);
 
         let mut unused = 0;
-        let mut currentRegion = BlobRegions::Invalid;
+        let mut current_region = BlobRegions::Invalid;
         let mut pos = 0;
-        let mut regionStart = 0;
+        let mut region_start = 0;
 
         for x in &stats.regions {
             
@@ -293,11 +299,11 @@ impl _Blob {
             if reg == BlobRegions::Empty {
                 unused += 1;
             }
-            if reg != currentRegion {
-                if pos > regionStart {
-                    println!("Region from {} to {} is {:?}", regionStart, pos-1, currentRegion);
-                    currentRegion = reg;
-                    regionStart = pos;
+            if reg != current_region {
+                if pos > region_start {
+                    println!("Region from {} to {} is {:?}", region_start, pos-1, current_region);
+                    current_region = reg;
+                    region_start = pos;
                 }
             }
             pos += 1;

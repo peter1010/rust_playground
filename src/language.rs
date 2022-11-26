@@ -75,7 +75,7 @@ impl Language {
         let offsets = Self::parse_offsets(&mut fp, schema, offset_size);
 
         fp.set_pos(offsets[0]);
-        let product_index = ProductIndex::from(&mut fp, schema, font_family);
+        let product_index = ProductIndex::create_from_file(&mut fp, schema, font_family);
 
         fp.set_pos(offsets[1]);
         let enumeration_index = EnumerationsIndex::from(&mut fp, schema, font_family);

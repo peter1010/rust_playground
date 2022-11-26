@@ -1,22 +1,22 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
-
 use crate::blob::{FileBlob, BlobRegions};
 use crate::modes::ModeIndex;
 
 ///
 /// ProductIndex is a dictionary of Products
 ///
-pub struct ProductIndex {
+pub struct ProductIndex
+{
     products: HashMap<u16, ProductIndexEntry>,
 }
 
 ///
 /// ProductIndexEntry is a entry in the dictionary of Products
 ///
-pub struct ProductIndexEntry {
+pub struct ProductIndexEntry 
+{
     product_id : u16, // Product Id is also the Key in the Dictionary in ProductIndex
     derivative_id_low: u16,
     derivative_id_high: u16,
@@ -24,7 +24,8 @@ pub struct ProductIndexEntry {
     mode_index: Rc<ModeIndex>,
 }
 
-pub struct ProductIndexIterator {
+pub struct ProductIndexIterator 
+{
     items: Vec<(u16, ProductIndexEntry)>,
 }
 
@@ -36,12 +37,11 @@ impl ProductIndex {
     ///
     /// Create a ProductIndex from the FileBlob
     ///
-    pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ProductIndex {
-
+    pub fn create_from_file(fp: &mut FileBlob, schema: u16, font_family: u8) -> ProductIndex
+    {
         // Product index header
         let num_products = fp.read_byte(BlobRegions::Products);
         let idx_entry_len = fp.read_byte(BlobRegions::Products);
-
 
         Self::validate_schema(schema, idx_entry_len, num_products);
 
@@ -103,28 +103,24 @@ impl ProductIndex {
     ///
     /// Parse V2 Product Index Entries intinally into a list of tuples
     ///
-    fn read_v2_entries(
-        fp: &mut FileBlob,
-        num_entries: u8,
-    ) -> Vec<(u16, u16, u16, u16, u32)> {
+    fn read_v2_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u16, u16, u16, u16, u32)> {
         // Language file V2 uses 32 bit offsets
         let mut tmp_info = Vec::new();
         let mut hits = HashSet::new();
 
         for _i in 0..num_entries {
-            let mut buf = [0; 8];
-            fp.read_exact(&mut buf, BlobRegions::Products);
-            let product_id = little_endian_2_bytes(&buf[2..4]);
-            let derivative_id_low = buf[1] as u16;
-            let derivative_id_high = buf[1] as u16;
-            if !hits.insert((product_id, derivative_id_low)) {
-                panic!("Duplicate product found!");
-            }
-            let flags = buf[0] as u16;
+            let flags = fp.read_byte(BlobRegions::Products) as u16;
             if flags > 15 {
                 panic!("Invalid flags in product index")
             }
-            let offset = little_endian_4_bytes(&buf[4..8]);
+            let derivative_id_low = fp.read_byte(BlobRegions::Products) as u16;
+            let derivative_id_high = derivative_id_low;
+            let product_id = fp.read_le_2bytes(BlobRegions::Products);
+            if !hits.insert((product_id, derivative_id_low)) {
+                panic!("Duplicate product found!");
+            }
+            let offset = fp.read_le_4bytes(BlobRegions::Products);
+
             tmp_info.push((
                 product_id,
                 derivative_id_low,
@@ -139,22 +135,17 @@ impl ProductIndex {
     ///
     /// Parse V3 Product Index Entries intinally into a list of tuples
     ///
-    fn read_v3_entries(
-        fp: &mut FileBlob,
-        num_entries: u8,
-    ) -> Vec<(u16, u16, u16, u16, u32)> {
+    fn read_v3_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u16, u16, u16, u16, u32)> {
         // Language file >= V3 uses 24 bit offsets
         let mut tmp_info = Vec::new();
         //        let mut hits = HashSet::new();
 
         for _i in 0..num_entries {
-            let mut buf = [0; 11];
-            fp.read_exact(&mut buf, BlobRegions::Products);
-            let product_id = little_endian_2_bytes(&buf[0..2]);
-            let derivative_id_low = little_endian_2_bytes(&buf[2..4]);
-            let derivative_id_high = little_endian_2_bytes(&buf[4..6]);
-            let flags = little_endian_2_bytes(&buf[6..8]);
-            let offset = little_endian_3_bytes(&buf[8..11]);
+            let product_id = fp.read_le_2bytes(BlobRegions::Products);
+            let derivative_id_low = fp.read_le_2bytes(BlobRegions::Products);
+            let derivative_id_high = fp.read_le_2bytes(BlobRegions::Products);
+            let flags = fp.read_le_2bytes(BlobRegions::Products);
+            let offset = fp.read_le_3bytes(BlobRegions::Products);
             tmp_info.push((
                 product_id,
                 derivative_id_low,

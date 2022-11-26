@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes};
-
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 use crate::parameters::ParameterIndex;
 
@@ -29,13 +27,10 @@ impl MenuIndex {
         // V2 there are no menu Indexes!
         // Read ParameterIndex
 
-        let mut header = [0; 6];
-        fp.read_exact(&mut header, BlobRegions::Parameters);
-
-        let num_entries = little_endian_2_bytes(&header[0..2]);
-        let max_str_len = little_endian_2_bytes(&header[2..4]);
-        let font_family = header[4];
-        let idx_entry_len = header[5];
+        let num_entries = fp.read_le_2bytes(BlobRegions::Parameters);
+        let max_str_len = fp.read_le_2bytes(BlobRegions::Parameters);
+        let font_family = fp.read_byte(BlobRegions::Parameters);
+        let idx_entry_len = fp.read_byte(BlobRegions::Parameters);
 
         if root_font_family != font_family {
             panic!("Mis-match font_family");
@@ -76,11 +71,8 @@ impl MenuIndex {
     /// Create a MenuIndex from v3 schema
     ///
     pub fn from_v3(fp: &mut FileBlob, font_family: u8) -> MenuIndex {
-        let mut header = [0; 2];
-        fp.read_exact(&mut header, BlobRegions::Menus);
-
-        let num_menus = header[0];
-        let idx_entry_len = header[1];
+        let num_menus = fp.read_byte(BlobRegions::Menus);
+        let idx_entry_len = fp.read_byte(BlobRegions::Menus);
 
         let mut menus = HashMap::new();
 
@@ -109,11 +101,8 @@ impl MenuIndex {
     /// Create a MenuIndex from v4 schema
     ///
     pub fn from_v4(fp: &mut FileBlob) -> MenuIndex {
-        let mut header = [0; 2];
-        fp.read_exact(&mut header, BlobRegions::Menus);
-
-        let num_menus = header[0];
-        let idx_entry_len = header[1];
+        let num_menus = fp.read_byte(BlobRegions::Menus);
+        let idx_entry_len = fp.read_byte(BlobRegions::Menus);
 
         let mut menus = HashMap::new();
 
@@ -168,9 +157,7 @@ impl MenuIndex {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
-            let mut buf = [0; 3];
-            fp.read_exact(&mut buf, BlobRegions::Menus);
-            let offset = little_endian_3_bytes(&buf[0..3]);
+            let offset = fp.read_le_3bytes(BlobRegions::Menus);
             if offset > 0 {
                 tmp_info.push((i, offset));
             }
@@ -185,11 +172,9 @@ impl MenuIndex {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
-            let mut buf = [0; 9];
-            fp.read_exact(&mut buf, BlobRegions::Menus);
-            let caption_off = little_endian_3_bytes(&buf[0..3]);
-            let tooltip_off = little_endian_3_bytes(&buf[3..6]);
-            let offset = little_endian_3_bytes(&buf[6..9]);
+            let caption_off = fp.read_le_3bytes(BlobRegions::Menus);
+            let tooltip_off = fp.read_le_3bytes(BlobRegions::Menus);
+            let offset = fp.read_le_3bytes(BlobRegions::Menus);
             if caption_off > 0 {
                 tmp_info.push((i, caption_off, tooltip_off, offset));
             }

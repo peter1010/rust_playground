@@ -12,6 +12,7 @@ pub mod modes;
 pub mod parameters;
 pub mod products;
 pub mod units;
+pub mod mnemonics;
 
 use std::fs;
 fn main() {

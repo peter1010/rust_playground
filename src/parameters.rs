@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
-use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
-
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
+use crate::mnemonics::MnemonicIndex;
 
 pub struct ParameterIndex {
     params: HashMap<u8, ParameterIndexEntry>,
@@ -11,6 +10,7 @@ pub struct ParameterIndex {
 pub struct ParameterIndexEntry {
     caption_off: u32,
     tooltip_off: u32,
+    mnemonic: Option<MnemonicIndex>,
     blob: RawBlob,
 }
 
@@ -55,17 +55,11 @@ impl ParameterIndex {
     /// check and remove parameter 255 which is a placeholder
     /// for menu caption Id
     ///
-    pub fn from_v3(
-        fp: &mut FileBlob,
-        root_font_family: u8,
-    ) -> (ParameterIndex, u32, u32) {
-        let mut header = [0; 6];
-        fp.read_exact(&mut header, BlobRegions::Parameters);
-
-        let num_entries = little_endian_2_bytes(&header[0..2]);
-        let max_str_len = little_endian_2_bytes(&header[2..4]);
-        let font_family = header[4];
-        let idx_entry_len = header[5];
+    pub fn from_v3(fp: &mut FileBlob, root_font_family: u8) -> (ParameterIndex, u32, u32) {
+        let num_entries = fp.read_le_2bytes(BlobRegions::Parameters);
+        let max_str_len = fp.read_le_2bytes(BlobRegions::Parameters);
+        let font_family = fp.read_byte(BlobRegions::Parameters);
+        let idx_entry_len = fp.read_byte(BlobRegions::Parameters);
 
         if root_font_family != font_family {
             panic!("Mis-match font_family");
@@ -95,21 +89,38 @@ impl ParameterIndex {
     /// Read and create a V4 ParameterIndex.
     ///
     pub fn from_v4(fp: &mut FileBlob) -> ParameterIndex {
-        let num_entries = fp.read_le_2bytes(BlobRegions::Parameters);
+        let num_params = fp.read_byte(BlobRegions::Parameters);
         let idx_entry_len = fp.read_byte(BlobRegions::Parameters);
 
 //		println!("Number of entries {} size {}", num_entries, idx_entry_len);
 
         let mut params = HashMap::new();
+        
 
         if idx_entry_len != 0 {
             Self::validate_schema(4, idx_entry_len, 256);
 
-            for _i in 0..num_entries {
-                let (param, entry) = ParameterIndexEntry::load_v4(fp);
+            let tmp_info = Self::read_v4_entries(fp, num_params);
+
+            for (param, caption_off, tooltip_off, mnemonic_off) in tmp_info {
+//			    println!("{} => {}", menu, offset);
+
+                let mnemonic = if mnemonic_off > 0 {
+                    fp.set_pos(mnemonic_off);
+                    Option::Some(MnemonicIndex::from(fp))
+                } else {
+                    Option::None
+                };
+
 //				println!("{}", param);
 
-                let old = params.insert(param, entry);
+                let old = params.insert(param, ParameterIndexEntry {
+                    caption_off: caption_off,
+                    tooltip_off: tooltip_off,
+                    mnemonic : mnemonic,
+                    blob: fp.freeze()
+                });
+ 
                 if old != None {
                     panic!("Two entries with same parameter! param={}", param);
                 }
@@ -166,6 +177,21 @@ impl ParameterIndex {
     pub fn get_num_params(&self) -> usize {
         self.params.len()
     }
+    
+    fn read_v4_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32, u32, u32)> {
+        let mut tmp_info = Vec::new();
+
+        for i in 0..num_entries {
+            let param = fp.read_byte(BlobRegions::Parameters);
+            let caption_off = fp.read_le_3bytes(BlobRegions::Menus);
+            let tooltip_off = fp.read_le_3bytes(BlobRegions::Menus);
+            let mnemonic_off = fp.read_le_3bytes(BlobRegions::Menus);
+            if caption_off > 0 {
+                tmp_info.push((param, caption_off, tooltip_off, mnemonic_off));
+            }
+        }
+        tmp_info
+    }
 }
 
 impl IntoIterator for &ParameterIndex {
@@ -188,54 +214,33 @@ impl IntoIterator for &ParameterIndex {
 }
 
 impl ParameterIndexEntry {
-    fn load_v4(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
-        let param = fp.read_byte(BlobRegions::Products);
-        let caption_off = fp.read_le_3bytes(BlobRegions::Products);
-        let tooltip_off = fp.read_le_3bytes(BlobRegions::Products);
-		let mnemonic_off = fp.read_le_3bytes(BlobRegions::Products);
-
-//		println!("{} => {} {} {}", param, caption_off, tooltip_off, mnemonic_off);
-
-        if caption_off == 0 {
-            println!("Empty parameter?");
-        };
-        let param_entry = ParameterIndexEntry {
-            caption_off: caption_off,
-            tooltip_off: tooltip_off,
-            blob: fp.freeze(),
-        };
-        (param, param_entry)
-    }
-
 
     fn load_v3(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
-        let mut buf = [0; 5];
-        fp.read_exact(&mut buf, BlobRegions::Products);
-        let param = buf[0];
-        if buf[1] != 0 {
-            panic!("Out of range param {}", buf[0]);
+        let param = fp.read_le_2bytes(BlobRegions::Parameters);
+        if param > 255  {
+            panic!("Out of range param {}", param);
         };
-        let offset = little_endian_3_bytes(&buf[2..5]);
+        let offset = fp.read_le_3bytes(BlobRegions::Parameters);
         if offset == 0 {
             println!("Empty slot");
         };
         let param_entry = ParameterIndexEntry {
             caption_off: offset,
             tooltip_off: 0,
+            mnemonic : Option::None,
             blob: fp.freeze(),
         };
-        (param, param_entry)
+        (param as u8, param_entry)
     }
 
     fn load_v2(fp: &mut FileBlob) -> (u8, u8, ParameterIndexEntry) {
-        let mut buf = [0; 6];
-        fp.read_exact(&mut buf, BlobRegions::Products);
-        let param = buf[0];
-        let menu = buf[1];
-        let offset = little_endian_4_bytes(&buf[2..6]);
+        let param = fp.read_byte(BlobRegions::Parameters);
+        let menu = fp.read_byte(BlobRegions::Parameters);
+        let offset = fp.read_le_4bytes(BlobRegions::Parameters);
         let param_entry = ParameterIndexEntry {
             caption_off: offset,
             tooltip_off: 0,
+            mnemonic : Option::None,
             blob: fp.freeze(),
         };
         (menu, param, param_entry)
@@ -265,9 +270,15 @@ impl PartialEq for ParameterIndexEntry {
 
 impl Clone for ParameterIndexEntry {
     fn clone(&self) -> ParameterIndexEntry {
+        let mnemonic = match &self.mnemonic {
+            Some(x) => Option::Some(x.clone()),
+            None => Option::None
+        };
+
         ParameterIndexEntry {
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
+            mnemonic: mnemonic,
             blob: self.blob.clone(),
         }
     }

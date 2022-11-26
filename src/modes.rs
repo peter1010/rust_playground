@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::conversion::{little_endian_3_bytes, little_endian_4_bytes};
-
 use crate::blob::{FileBlob, BlobRegions};
 use crate::menus::MenuIndex;
 
@@ -20,11 +18,8 @@ pub struct ModeIndexIterator {
 
 impl ModeIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ModeIndex {
-        let mut header = [0; 2];
-        fp.read_exact(&mut header, BlobRegions::Modes);
-
-        let num_modes = header[0];
-        let idx_entry_len = header[1];
+        let num_modes = fp.read_byte(BlobRegions::Modes);
+        let idx_entry_len = fp.read_byte(BlobRegions::Modes);
 
         Self::validate_schema(schema, idx_entry_len, num_modes);
 
@@ -123,9 +118,7 @@ impl ModeIndex {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
-            let mut buf = [0; 5];
-            fp.read_exact(&mut buf, BlobRegions::Modes);
-            let mode_num = buf[0];
+            let mode_num = fp.read_byte(BlobRegions::Modes);
             if num_entries > 1 {
                 if mode_num != i + 1 {
                     panic!("Out of seq mode numbers {} != {}", mode_num, i);
@@ -133,7 +126,7 @@ impl ModeIndex {
             } else if mode_num != 0 && mode_num != 1 {
                 panic!("Invalid mode_num {}", mode_num);
             }
-            let offset = little_endian_4_bytes(&buf[1..5]);
+            let offset = fp.read_le_4bytes(BlobRegions::Modes);
             if offset == 0 {
                 panic!("Offset is zero")
             };
@@ -146,9 +139,7 @@ impl ModeIndex {
         let mut tmp_info = Vec::new();
 
         for i in 0..num_entries {
-            let mut buf = [0; 3];
-            fp.read_exact(&mut buf, BlobRegions::Modes);
-            let offset = little_endian_3_bytes(&buf[0..3]);
+            let offset = fp.read_le_3bytes(BlobRegions::Modes);
             let mode_num = if num_entries == 1 {
                 if offset == 0 {
                     panic!("Offset is zero")

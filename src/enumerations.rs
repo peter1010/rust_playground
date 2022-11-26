@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
-
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
 ///
@@ -23,25 +21,18 @@ pub struct EnumerationsIndexIterator {
 
 impl EnumerationsIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> EnumerationsIndex {
-        let mut common_hdr = [0; 2];
-        fp.read_exact(&mut common_hdr, BlobRegions::Enumerations);
-
-        let num_entries = little_endian_2_bytes(&common_hdr[0..2]);
+        let num_entries = fp.read_le_2bytes(BlobRegions::Enumerations);
 		if schema < 4 {
-        	let mut hdr = [0; 4];
-        	fp.read_exact(&mut hdr, BlobRegions::Enumerations);
-        	let max_str_len = little_endian_2_bytes(&hdr[0..2]);
-        	let font_family = hdr[2];
-        	let idx_entry_len = hdr[3];
+        	let max_str_len = fp.read_le_2bytes(BlobRegions::Enumerations);
+        	let font_family = fp.read_byte(BlobRegions::Enumerations);
+        	let idx_entry_len = fp.read_byte(BlobRegions::Enumerations);
 
         	if root_font_family != font_family {
             	panic!("Mis-match font_family");
         	}
         	Self::validate_schema(schema, idx_entry_len, max_str_len);
 		} else {
-        	let mut hdr = [0; 1];
-        	fp.read_exact(&mut hdr, BlobRegions::Enumerations);
-        	let idx_entry_len = hdr[0];
+        	let idx_entry_len = fp.read_byte(BlobRegions::Enumerations);
         	Self::validate_schema(schema, idx_entry_len, 256);
 		}
 
@@ -56,7 +47,7 @@ impl EnumerationsIndex {
             };
             let old = enumerations.insert(enumeration, entry);
             if old != None {
-                panic!("Two entries with same mnemonic!");
+                panic!("Two entries with same enum!");
             }
         }
         EnumerationsIndex { enumerations }
@@ -121,10 +112,8 @@ impl EnumerationsIndexEntry {
     }
 
     fn load_v2(fp: &mut FileBlob) -> (u16, EnumerationsIndexEntry) {
-        let mut buf = [0; 6];
-        fp.read_exact(&mut buf, BlobRegions::Enumerations);
-        let enumeration = little_endian_2_bytes(&buf[0..2]);
-        let offset = little_endian_4_bytes(&buf[2..6]);
+        let enumeration = fp.read_le_2bytes(BlobRegions::Enumerations);
+        let offset = fp.read_le_4bytes(BlobRegions::Enumerations);
         if offset == 0 {
             panic! {"Empty slot"};
         };
@@ -136,10 +125,8 @@ impl EnumerationsIndexEntry {
     }
 
     fn load_v3(fp: &mut FileBlob) -> (u16, EnumerationsIndexEntry) {
-        let mut buf = [0; 5];
-        fp.read_exact(&mut buf, BlobRegions::Enumerations);
-        let enumeration = little_endian_2_bytes(&buf[0..2]);
-        let offset = little_endian_3_bytes(&buf[2..5]);
+        let enumeration = fp.read_le_2bytes(BlobRegions::Enumerations);
+        let offset = fp.read_le_3bytes(BlobRegions::Enumerations);
         if offset == 0 {
             panic! {"Empty slot"};
         };
