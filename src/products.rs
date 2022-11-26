@@ -37,12 +37,10 @@ impl ProductIndex {
     /// Create a ProductIndex from the FileBlob
     ///
     pub fn from(fp: &mut FileBlob, schema: u16, font_family: u8) -> ProductIndex {
-        let mut header = [0; 2];
-        fp.read_exact(&mut header, BlobRegions::Products);
 
         // Product index header
-        let num_products = header[0];
-        let idx_entry_len = header[1];
+        let num_products = fp.read_byte(BlobRegions::Products);
+        let idx_entry_len = fp.read_byte(BlobRegions::Products);
 
 
         Self::validate_schema(schema, idx_entry_len, num_products);

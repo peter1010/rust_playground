@@ -69,6 +69,26 @@ impl FileBlob {
         self.data.add_region(pos, pos + to_read, region)
     }
 
+	pub fn read_le_3bytes(&mut self, region: BlobRegions) -> u32 {
+		let mut values = [0; 3];
+   		self.read_exact(&mut values, region);
+		return (values[0] as u32) | ((values[1] as u32) << 8) | ((values[2] as u32) << 16);
+	}
+	
+	pub fn read_le_2bytes(&mut self, region: BlobRegions) -> u16 {
+		let mut values = [0; 2];
+   		self.read_exact(&mut values, region);
+		return (values[0] as u16) | ((values[1] as u16) << 8);
+	}
+	
+	pub fn read_byte(&mut self, region: BlobRegions) -> u8 {
+		let mut values = [0; 1];
+   		self.read_exact(&mut values, region);
+		return values[0];
+	}
+
+
+
     ///
     /// Reads the whole file into Blob
     ///

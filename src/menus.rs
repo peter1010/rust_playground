@@ -117,11 +117,12 @@ impl MenuIndex {
 
         let mut menus = HashMap::new();
 
-        Self::validate_schema(3, idx_entry_len);
+        Self::validate_schema(4, idx_entry_len);
 
         let tmp_info = Self::read_v4_entries(fp, num_menus);
 
         for (menu, caption_off, tooltip_off, offset) in tmp_info {
+//			println!("{} => {}", menu, offset);
             fp.set_pos(offset);
             let param_index = ParameterIndex::from_v4(fp);
             let menu_entry = MenuIndexEntry {
@@ -151,9 +152,9 @@ impl MenuIndex {
                     panic!("V3 MenuIndexEntry wrong size 3 != {}", idx_entry_len)
                 }
             }
-            3 => {
+            4 => {
                 if idx_entry_len != 9 {
-                    panic!("V3 MenuIndexEntry wrong size 3 != {}", idx_entry_len)
+                    panic!("V4 MenuIndexEntry wrong size 9 != {}", idx_entry_len)
                 }
             }
             _ => panic!("Invalid format"),
@@ -186,11 +187,11 @@ impl MenuIndex {
         for i in 0..num_entries {
             let mut buf = [0; 9];
             fp.read_exact(&mut buf, BlobRegions::Menus);
-            let offset1 = little_endian_3_bytes(&buf[0..3]);
-            let offset2 = little_endian_3_bytes(&buf[3..6]);
-            let offset3 = little_endian_3_bytes(&buf[6..9]);
-            if offset1 > 0 {
-                tmp_info.push((i, offset1, offset2, offset3));
+            let caption_off = little_endian_3_bytes(&buf[0..3]);
+            let tooltip_off = little_endian_3_bytes(&buf[3..6]);
+            let offset = little_endian_3_bytes(&buf[6..9]);
+            if caption_off > 0 {
+                tmp_info.push((i, caption_off, tooltip_off, offset));
             }
         }
         tmp_info

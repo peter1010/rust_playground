@@ -23,20 +23,29 @@ pub struct EnumerationsIndexIterator {
 
 impl EnumerationsIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> EnumerationsIndex {
-        let mut header = [0; 6];
-        fp.read_exact(&mut header, BlobRegions::Enumerations);
+        let mut common_hdr = [0; 2];
+        fp.read_exact(&mut common_hdr, BlobRegions::Enumerations);
 
-        let num_entries = little_endian_2_bytes(&header[0..2]);
-        let max_str_len = little_endian_2_bytes(&header[2..4]);
-        let font_family = header[4];
-        let idx_entry_len = header[5];
+        let num_entries = little_endian_2_bytes(&common_hdr[0..2]);
+		if schema < 4 {
+        	let mut hdr = [0; 4];
+        	fp.read_exact(&mut hdr, BlobRegions::Enumerations);
+        	let max_str_len = little_endian_2_bytes(&hdr[0..2]);
+        	let font_family = hdr[2];
+        	let idx_entry_len = hdr[3];
 
-        if root_font_family != font_family {
-            panic!("Mis-match font_family");
-        }
+        	if root_font_family != font_family {
+            	panic!("Mis-match font_family");
+        	}
+        	Self::validate_schema(schema, idx_entry_len, max_str_len);
+		} else {
+        	let mut hdr = [0; 1];
+        	fp.read_exact(&mut hdr, BlobRegions::Enumerations);
+        	let idx_entry_len = hdr[0];
+        	Self::validate_schema(schema, idx_entry_len, 256);
+		}
+
         let mut enumerations = HashMap::new();
-
-        Self::validate_schema(schema, idx_entry_len, max_str_len);
 
         for _i in 0..num_entries {
             let (enumeration, entry) = match schema {
@@ -54,6 +63,7 @@ impl EnumerationsIndex {
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
+		let mut req_string_len = 16;
         match schema {
             2 => {
                 if idx_entry_len != 6 {
@@ -69,11 +79,12 @@ impl EnumerationsIndex {
                 if idx_entry_len != 5 {
                     panic!("V3 EnumerationIndexEntry wrong size 3 != {}", idx_entry_len)
                 }
+				req_string_len = 256;
             }
             _ => panic!("Invalid format"),
         };
-        if max_str_len != 16 {
-            panic!("Max string len should be 16 was {}", max_str_len);
+        if max_str_len != req_string_len {
+            panic!("Max string len should be {} was {}", req_string_len, max_str_len);
         }
     }
 }

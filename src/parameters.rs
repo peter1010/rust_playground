@@ -94,25 +94,24 @@ impl ParameterIndex {
     ///
     /// Read and create a V4 ParameterIndex.
     ///
-    pub fn from_v4(
-        fp: &mut FileBlob
-    ) -> ParameterIndex {
-        let mut header = [0; 3];
-        fp.read_exact(&mut header, BlobRegions::Parameters);
+    pub fn from_v4(fp: &mut FileBlob) -> ParameterIndex {
+        let num_entries = fp.read_le_2bytes(BlobRegions::Parameters);
+        let idx_entry_len = fp.read_byte(BlobRegions::Parameters);
 
-        let num_entries = little_endian_2_bytes(&header[0..2]);
-        let idx_entry_len = header[3];
+//		println!("Number of entries {} size {}", num_entries, idx_entry_len);
 
         let mut params = HashMap::new();
 
         if idx_entry_len != 0 {
-            Self::validate_schema(4, idx_entry_len, 0);
+            Self::validate_schema(4, idx_entry_len, 256);
 
             for _i in 0..num_entries {
                 let (param, entry) = ParameterIndexEntry::load_v4(fp);
+//				println!("{}", param);
+
                 let old = params.insert(param, entry);
                 if old != None {
-                    panic!("Two entries with same parameter!");
+                    panic!("Two entries with same parameter! param={}", param);
                 }
             }
 
@@ -139,6 +138,7 @@ impl ParameterIndex {
     }
 
     pub fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
+		let mut req_str_len = 32;
         match schema {
             2 => {
                 if idx_entry_len != 6 {
@@ -150,10 +150,16 @@ impl ParameterIndex {
                     panic!("V3 ParamIndexEntry wrong size 3 != {}", idx_entry_len)
                 }
             }
+            4 => {
+                if idx_entry_len != 5 {
+                    panic!("V4 ParamIndexEntry wrong size 3 != {}", idx_entry_len)
+                }
+				req_str_len = 256;
+            }
             _ => panic!("Invalid format"),
         };
-        if max_str_len != 32 {
-            panic!("Incorrect string len")
+        if max_str_len != req_str_len {
+            panic!("Incorrect string len {} != {}", req_str_len, max_str_len);
         }
     }
 
@@ -183,19 +189,19 @@ impl IntoIterator for &ParameterIndex {
 
 impl ParameterIndexEntry {
     fn load_v4(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
-        let mut buf = [0; 8];
-        fp.read_exact(&mut buf, BlobRegions::Products);
-        let param = buf[0];
-        if buf[1] != 0 {
-            panic!("Out of range param {}", buf[0]);
-        };
-        let offset = little_endian_3_bytes(&buf[2..5]);
-        if offset == 0 {
-            println!("Empty slot");
+        let param = fp.read_byte(BlobRegions::Products);
+        let caption_off = fp.read_le_3bytes(BlobRegions::Products);
+        let tooltip_off = fp.read_le_3bytes(BlobRegions::Products);
+		let mnemonic_off = fp.read_le_3bytes(BlobRegions::Products);
+
+//		println!("{} => {} {} {}", param, caption_off, tooltip_off, mnemonic_off);
+
+        if caption_off == 0 {
+            println!("Empty parameter?");
         };
         let param_entry = ParameterIndexEntry {
-            caption_off: offset,
-            tooltip_off: 0,
+            caption_off: caption_off,
+            tooltip_off: tooltip_off,
             blob: fp.freeze(),
         };
         (param, param_entry)

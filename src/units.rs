@@ -20,25 +20,31 @@ pub struct UnitsIndexIterator {
 
 impl UnitsIndex {
     pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> UnitsIndex {
-        let mut header = [0; 6];
-        fp.read_exact(&mut header, BlobRegions::Units);
+		
+		let num_entries = fp.read_le_2bytes(BlobRegions::Units);
+		println!("Num entries {}", num_entries);
+        
+		let mut max_str_len = 256;
+		if schema < 4 {
+        	max_str_len = fp.read_le_2bytes(BlobRegions::Units);
+        	let font_family = fp.read_byte(BlobRegions::Units);
+        
+			if root_font_family != font_family {
+            	panic!("Mis-match font_family");
+        	}
+		}
 
-        let num_entries = little_endian_2_bytes(&header[0..2]);
-        let max_str_len = little_endian_2_bytes(&header[2..4]);
-        let font_family = header[4];
-        let idx_entry_len = header[5];
+        let idx_entry_len = fp.read_byte(BlobRegions::Units);
+        
+		Self::validate_schema(schema, idx_entry_len, max_str_len);
 
-        if root_font_family != font_family {
-            panic!("Mis-match font_family");
-        }
         let mut units = HashMap::new();
-
-        Self::validate_schema(schema, idx_entry_len, max_str_len);
 
         for _i in 0..num_entries {
             let (unit_id, entry) = match schema {
                 2 => UnitsIndexEntry::load_v2(fp),
                 3 => UnitsIndexEntry::load_v3(fp),
+				4 => UnitsIndexEntry::load_v4(fp),
                 _ => panic!("Invalid schema"),
             };
             let old = units.insert(unit_id, entry);
@@ -50,22 +56,29 @@ impl UnitsIndex {
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
+		let mut req_str_len = 16;
         match schema {
             2 => {
                 if idx_entry_len != 6 {
-                    panic!("V2 KeypadStrIndexEntry wrong size 4 != {}", idx_entry_len)
+                    panic!("V2 UnitsIndexEntry wrong size 6 != {}", idx_entry_len)
                 }
             }
             3 => {
                 if idx_entry_len != 5 {
-                    panic!("V3 KeypadStrIndexEntry wrong size 3 != {}", idx_entry_len)
+                    panic!("V3 UnitsIndexEntry wrong size 5 != {}", idx_entry_len)
                 }
             }
-            _ => panic!("Invalid format"),
+            4 => {
+                if idx_entry_len != 8 {
+                    panic!("V4 UnitsIndexEntry wrong size 8 != {}", idx_entry_len)
+                }
+				req_str_len = 256;
+            }
+            _ => panic!("Invalid format, schema = {}", schema),
         };
 
-        if max_str_len != 16 {
-            panic!("Units, max string len should be 16!");
+        if max_str_len != req_str_len {
+            panic!("Units, max string len should be {} not {}!", req_str_len, max_str_len);
         }
     }
 }
@@ -140,6 +153,20 @@ impl UnitsIndexEntry {
         let entry = UnitsIndexEntry {
             caption_off: offset,
             tooltip_off: 0,
+            blob: fp.freeze(),
+        };
+        (unit_id, entry)
+    }
+    fn load_v4(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
+        let unit_id = fp.read_le_2bytes(BlobRegions::Units);
+        let caption_off = fp.read_le_3bytes(BlobRegions::Units);
+        let tooltip_off = fp.read_le_3bytes(BlobRegions::Units);
+        if caption_off == 0 {
+            panic! {"Empty slot"};
+        };
+        let entry = UnitsIndexEntry {
+            caption_off,
+            tooltip_off,
             blob: fp.freeze(),
         };
         (unit_id, entry)
