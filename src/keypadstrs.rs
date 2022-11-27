@@ -4,7 +4,8 @@ use crate::conversion::{little_endian_2_bytes, little_endian_4_bytes};
 
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
-pub struct KeypadStrIndex {
+pub struct KeypadStrIndex 
+{
     keypad_strs: HashMap<u16, KeypadStrIndexEntry>,
 }
 

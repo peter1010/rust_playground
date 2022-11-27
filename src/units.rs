@@ -1,24 +1,47 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
 
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
-pub struct UnitsIndex {
+pub struct UnitsIndex 
+{
     units: HashMap<u16, UnitsIndexEntry>,
 }
 
-pub struct UnitsIndexEntry {
+pub struct UnitsIndexEntry 
+{
+    units: u16,
     caption_off: u32,
     tooltip_off: u32,
     blob: RawBlob,
 }
 
-pub struct UnitsIndexIterator {
+pub struct UnitsIndexIterator 
+{
     items: Vec<(u16, UnitsIndexEntry)>,
 }
 
 impl UnitsIndex {
+
+    pub fn new(units : HashMap<u16, UnitsIndexEntry>) -> UnitsIndex
+    {
+        let mut hits = HashSet::<u16>::new();
+
+        for entry in &units {
+            let units = entry.1.units;
+
+            assert_eq!(*entry.0, units);
+
+            if hits.contains(&units) {
+                panic!("Duplicate units detected");
+            }
+            hits.insert(units);
+        }
+        UnitsIndex { units }
+    }
+
+
     pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> UnitsIndex {
 		
 		let num_entries = fp.read_le_2bytes(BlobRegions::Units);
@@ -47,12 +70,9 @@ impl UnitsIndex {
 				4 => UnitsIndexEntry::load_v4(fp),
                 _ => panic!("Invalid schema"),
             };
-            let old = units.insert(unit_id, entry);
-            if old != None {
-                panic!("Two entries with same units!");
-            }
+            units.insert(unit_id, entry);
         }
-        UnitsIndex { units }
+        UnitsIndex::new(units)
     }
 
     fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
@@ -103,6 +123,17 @@ impl IntoIterator for &UnitsIndex {
 }
 
 impl UnitsIndexEntry {
+
+    pub fn new(units: u16, caption_off: u32, tooltip_off: u32, fp : & mut FileBlob) -> UnitsIndexEntry
+    {
+        UnitsIndexEntry {
+            units,
+            caption_off,
+            tooltip_off,
+            blob: fp.freeze()
+        }
+    }
+
     pub fn get_caption_off(&self) -> u32 {
         self.caption_off
     }
@@ -134,11 +165,7 @@ impl UnitsIndexEntry {
         if offset == 0 {
             panic! {"Empty slot"};
         };
-        let entry = UnitsIndexEntry {
-            caption_off: offset,
-            tooltip_off: 0,
-            blob: fp.freeze(),
-        };
+        let entry = UnitsIndexEntry::new(unit_id, offset, 0, fp);
         (unit_id, entry)
     }
 
@@ -150,11 +177,7 @@ impl UnitsIndexEntry {
         if offset == 0 {
             panic! {"Empty slot"};
         };
-        let entry = UnitsIndexEntry {
-            caption_off: offset,
-            tooltip_off: 0,
-            blob: fp.freeze(),
-        };
+        let entry = UnitsIndexEntry::new(unit_id, offset, 0, fp);
         (unit_id, entry)
     }
     fn load_v4(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
@@ -164,11 +187,7 @@ impl UnitsIndexEntry {
         if caption_off == 0 {
             panic! {"Empty slot"};
         };
-        let entry = UnitsIndexEntry {
-            caption_off,
-            tooltip_off,
-            blob: fp.freeze(),
-        };
+        let entry = UnitsIndexEntry::new(unit_id, caption_off, tooltip_off, fp);
         (unit_id, entry)
     }
 }
@@ -182,6 +201,7 @@ impl PartialEq for UnitsIndexEntry {
 impl Clone for UnitsIndexEntry {
     fn clone(&self) -> UnitsIndexEntry {
         UnitsIndexEntry {
+            units: self.units,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
             blob: self.blob.clone(),

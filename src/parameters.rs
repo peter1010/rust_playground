@@ -220,7 +220,6 @@ impl IntoIterator for &ParameterIndex {
 
 impl ParameterIndexEntry {
 
-
     fn new(param_num: u8, caption_off :u32, tooltip_off:u32, mnemonic : MnemonicIndex, fp : & mut FileBlob)
     -> ParameterIndexEntry
     {
