@@ -93,13 +93,8 @@ impl MnemonicIndex
 impl Clone for MnemonicIndex
 {
     fn clone(&self) -> MnemonicIndex {
-        let mut values = self.values.clone();
+        let values = self.values.clone();
 
-        //HashMap<u8, MnemonicIndexEntry>::new();
-
-        //for entry = self.values {
-        //    values.insert(
-        //}
         MnemonicIndex {
             values
         }

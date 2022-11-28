@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::conversion::{little_endian_2_bytes, little_endian_4_bytes};
-
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
 pub struct KeypadStrIndex 
@@ -19,18 +17,12 @@ pub struct KeypadStrIterator {
 }
 
 impl KeypadStrIndex {
-    pub fn from(
-        fp: &mut FileBlob,
-        schema: u16,
-        root_font_family: u8,
-    ) -> KeypadStrIndex {
-        let mut header = [0; 6];
-        fp.read_exact(&mut header, BlobRegions::KeypadStrs);
+    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> KeypadStrIndex {
 
-        let num_entries = little_endian_2_bytes(&header[0..2]);
-        let max_str_len = little_endian_2_bytes(&header[2..4]);
-        let font_family = header[4];
-        let idx_entry_len = header[5];
+        let num_entries = fp.read_le_2bytes(BlobRegions::KeypadStrs);
+        let max_str_len = fp.read_le_2bytes(BlobRegions::KeypadStrs);
+        let font_family = fp.read_byte(BlobRegions::KeypadStrs);
+        let idx_entry_len = fp.read_byte(BlobRegions::KeypadStrs);
 
         if root_font_family != font_family {
             panic!("Mis-match font_family");
@@ -93,10 +85,8 @@ impl IntoIterator for &KeypadStrIndex {
 
 impl KeypadStrIndexEntry {
     fn load_v2(fp: &mut FileBlob) -> (u16, KeypadStrIndexEntry) {
-        let mut buf = [0; 6];
-        fp.read_exact(&mut buf, BlobRegions::KeypadStrs);
-        let string_id = little_endian_2_bytes(&buf[0..2]);
-        let offset = little_endian_4_bytes(&buf[2..6]);
+        let string_id = fp.read_le_2bytes(BlobRegions::KeypadStrs);
+        let offset = fp.read_le_4bytes(BlobRegions::KeypadStrs);
         if offset == 0 {
             panic! {"Empty slot"};
         };

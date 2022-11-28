@@ -3,7 +3,7 @@ use std::io;
 use std::io::Read;
 
 use crate::conversion::{
-    little_endian_2_bytes, little_endian_2_bytes_as_u8, little_endian_3_bytes,
+    little_endian_2_bytes,
     little_endian_4_bytes, little_endian_4_version,
 };
 
@@ -23,8 +23,10 @@ pub struct Language {
     units_index: UnitsIndex,
 }
 
-impl Language {
-    pub fn from(fp: &mut File, maps: CharacterMaps) -> io::Result<Language> {
+impl Language 
+{
+    pub fn create_from_file(fp: &mut File, maps: CharacterMaps) -> io::Result<Language> 
+    {
         let mut common_hdr = [0; 32];
         fp.read_exact(&mut common_hdr)?;
 
@@ -51,18 +53,14 @@ impl Language {
         println!("Language file locale_id {}, length {}, crc {}, schema {}", locale_id, file_len, file_crc, schema);
 
         let font_family = if schema < 4 {
-            let mut font_hdr = [0; 2];
-            fp.read_exact(&mut font_hdr, BlobRegions::Header);
-            let font_family = little_endian_2_bytes_as_u8(&font_hdr[0..2]);
+            let font_family = fp.read_le_2bytes(BlobRegions::Header) as u8;
             println!("Font family {}", font_family);
             font_family
         } else {
             0
         };
 
-        let mut hdr = [0; 2];
-        fp.read_exact(&mut hdr, BlobRegions::Header);
-        let offset_size = little_endian_2_bytes(&hdr[0..2]);
+        let offset_size = fp.read_le_2bytes(BlobRegions::Header);
 
         println!(
             "Language file offset_size {}, version {}",
@@ -161,6 +159,13 @@ impl Language {
 
         fp.display_stats();
 
+        for (product, details) in &lang.product_index {
+            match details.to_string() {
+                Ok(x) => println!("{} => {}", product, x),
+                Err(x) => panic!("{} => {}", product, x),
+            };
+        }
+
         return Result::Ok(lang);
     }
 
@@ -194,28 +199,22 @@ impl Language {
         let mut offsets = Vec::new();
         match schema {
             2 => {
-                let mut header = [0; 16];
-                fp.read_exact(&mut header, BlobRegions::Header); 
-                offsets.push(little_endian_3_bytes(&header[0..4]));
-                offsets.push(little_endian_3_bytes(&header[4..8]));
-                offsets.push(little_endian_3_bytes(&header[8..12]));
-                offsets.push(little_endian_3_bytes(&header[12..16]));
+                offsets.push(fp.read_le_4bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_4bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_4bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_4bytes(BlobRegions::Header));
             }
             3 => {
-                let mut header = [0; 12];
-                fp.read_exact(&mut header, BlobRegions::Header); 
-                offsets.push(little_endian_3_bytes(&header[0..3]));
-                offsets.push(little_endian_3_bytes(&header[3..6]));
-                offsets.push(little_endian_3_bytes(&header[6..9]));
-                offsets.push(little_endian_3_bytes(&header[9..12]));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
             }
             4 => {
-                let mut header = [0; 9];
-                fp.read_exact(&mut header, BlobRegions::Header); 
-                offsets.push(little_endian_3_bytes(&header[0..3]));
-                offsets.push(little_endian_3_bytes(&header[3..6]));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
                 offsets.push(0);
-                offsets.push(little_endian_3_bytes(&header[6..9]));
+                offsets.push(fp.read_le_3bytes(BlobRegions::Header));
             }
             _ => panic!("Invalid format"),
         };
@@ -240,7 +239,7 @@ pub fn read_language_file(filepath: &str, maps: CharacterMaps) -> Language {
         }
     };
 
-    let language = match Language::from(&mut fp, maps) {
+    let language = match Language::create_from_file(&mut fp, maps) {
         Ok(index) => index,
         Err(_) => {
             panic!("Failed to process {}", String::from(filepath));

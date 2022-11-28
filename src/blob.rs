@@ -57,7 +57,7 @@ impl FileBlob {
         }
     }
 
-    pub fn read_exact(&mut self, buf: &mut [u8], region: BlobRegions)  {
+    fn read_exact(&mut self, buf: &mut [u8], region: BlobRegions)  {
         let to_read = buf.len();
         let pos = self.pos;
 

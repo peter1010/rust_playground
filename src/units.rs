@@ -1,7 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::conversion::{little_endian_2_bytes, little_endian_3_bytes, little_endian_4_bytes};
-
 use crate::blob::{FileBlob, RawBlob, BlobRegions};
 
 pub struct UnitsIndex 
@@ -158,10 +156,8 @@ impl UnitsIndexEntry {
     }
 
     fn load_v2(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
-        let mut buf = [0; 6];
-        fp.read_exact(&mut buf, BlobRegions::Units);
-        let unit_id = little_endian_2_bytes(&buf[0..2]);
-        let offset = little_endian_4_bytes(&buf[2..6]);
+        let unit_id = fp.read_le_2bytes(BlobRegions::Units);
+        let offset = fp.read_le_4bytes(BlobRegions::Units);
         if offset == 0 {
             panic! {"Empty slot"};
         };
@@ -170,16 +166,15 @@ impl UnitsIndexEntry {
     }
 
     fn load_v3(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
-        let mut buf = [0; 5];
-        fp.read_exact(&mut buf, BlobRegions::Units);
-        let unit_id = little_endian_2_bytes(&buf[0..2]);
-        let offset = little_endian_3_bytes(&buf[2..5]);
+        let unit_id = fp.read_le_2bytes(BlobRegions::Units);
+        let offset = fp.read_le_3bytes(BlobRegions::Units);
         if offset == 0 {
             panic! {"Empty slot"};
         };
         let entry = UnitsIndexEntry::new(unit_id, offset, 0, fp);
         (unit_id, entry)
     }
+
     fn load_v4(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
         let unit_id = fp.read_le_2bytes(BlobRegions::Units);
         let caption_off = fp.read_le_3bytes(BlobRegions::Units);
