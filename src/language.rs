@@ -99,10 +99,10 @@ impl Language
 
         println!("Products ....");
 
-        for (product, details) in &lang.product_index {
+        for details in &lang.product_index {
             match details.to_string() {
-                Ok(x) => println!("{} => {}", product, x),
-                Err(x) => panic!("{} => {}", product, x),
+                Ok(x) => println!("{}", x),
+                Err(x) => panic!("{}", x),
             };
             for (mode, details) in details.get_modes() {
                 match details.to_string(mode) {
@@ -159,10 +159,10 @@ impl Language
 
         fp.display_stats();
 
-        for (product, details) in &lang.product_index {
+        for details in &lang.product_index {
             match details.to_string() {
-                Ok(x) => println!("{} => {}", product, x),
-                Err(x) => panic!("{} => {}", product, x),
+                Ok(x) => println!("{}", x),
+                Err(x) => panic!("{}", x),
             };
         }
 

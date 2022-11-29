@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::cmp::Ordering;
 
 use crate::blob::{FileBlob, BlobRegions};
 use crate::modes::ModeIndex;
@@ -9,7 +10,7 @@ use crate::modes::ModeIndex;
 ///
 pub struct ProductIndex
 {
-    products: HashMap<u16, ProductIndexEntry>,
+    products: Vec<ProductIndexEntry>,
 }
 
 ///
@@ -17,7 +18,7 @@ pub struct ProductIndex
 ///
 pub struct ProductIndexEntry 
 {
-    product_id : u16, // Product Id is also the Key in the Dictionary in ProductIndex
+    product_id : u16, // Product Id - there can be duplicates!
     derivative_id_low: u16,
     derivative_id_high: u16,
     flags: u16,
@@ -26,7 +27,7 @@ pub struct ProductIndexEntry
 
 pub struct ProductIndexIterator 
 {
-    items: Vec<(u16, ProductIndexEntry)>,
+    items: Vec<ProductIndexEntry>
 }
 
 ///
@@ -34,17 +35,15 @@ pub struct ProductIndexIterator
 ///
 impl ProductIndex
 {
-    pub fn new(products: HashMap<u16, ProductIndexEntry>) -> ProductIndex
+    pub fn new(products: Vec<ProductIndexEntry>) -> ProductIndex
     {
         let mut ranges = HashMap::<u16, (u16, u16)>::new();
 
         for entry in &products {
 
-            let product_id = entry.1.product_id;
-            let low = entry.1.derivative_id_low;
-            let high = entry.1.derivative_id_high;
-
-            assert_eq!(*entry.0, product_id);
+            let product_id = entry.product_id;
+            let low = entry.derivative_id_low;
+            let high = entry.derivative_id_high;
 
             match ranges.get(&product_id) {
                 Some(x) => {
@@ -80,15 +79,14 @@ impl ProductIndex
             _ => panic!("Invalid format"),
         };
 
-        let mut products = HashMap::new();
+        let mut products = Vec::new();
 
         for info in tmp_info {
             let (product_id, derivative_id_low, derivative_id_high, flags, offset) = info;
             
             fp.set_pos(offset);
             let mode_index = ModeIndex::create_from_file(fp, schema, font_family);
-            products.insert(
-                product_id,
+            products.push(
                 ProductIndexEntry::new(product_id, derivative_id_low, derivative_id_high, flags, mode_index),
             );
         }
@@ -185,20 +183,17 @@ impl ProductIndex
 
 impl IntoIterator for &ProductIndex 
 {
-    type Item = (u16, ProductIndexEntry);
+    type Item = ProductIndexEntry;
     type IntoIter = ProductIndexIterator;
 
-    fn into_iter(self) -> Self::IntoIter {
-        let mut keys = Vec::new();
-        for key in self.products.keys() {
-            keys.push(*key)
-        }
-        keys.sort();
-        keys.reverse();
+    fn into_iter(self) -> Self::IntoIter 
+    {
         let mut items = Vec::new();
-        for key in keys {
-            items.push((key, self.products[&key].clone()));
+        for item in &self.products {
+            items.push(item.clone())
         }
+        items.sort();
+        items.reverse();
         ProductIndexIterator { items }
     }
 }
@@ -226,16 +221,16 @@ impl ProductIndexEntry
     pub fn to_string(&self) -> Result<String, String> {
         let num_modes = self.mode_index.get_num_modes();
         if self.derivative_id_high == 65535 && self.derivative_id_low == 0 {
-            return Result::Ok(format!("ALL DERIVATIVES : num of modes = {}", num_modes));
+            return Result::Ok(format!("{} - ALL DERIVATIVES : num of modes = {}", self.product_id, num_modes));
         }
         if self.derivative_id_high > self.derivative_id_low {
             return Result::Ok(format!(
-                "Derv {} - {} : num_of_modes = {}",
+                "{} - Derv {} - {} : num_of_modes = {}", self.product_id,
                 self.derivative_id_low, self.derivative_id_high, num_modes
             ));
         }
         return Result::Ok(format!(
-            " Derv {} : num_of_modes = {}",
+            "{} - Derv {} : num_of_modes = {}", self.product_id,
             self.derivative_id_low, num_modes
         ));
     }
@@ -244,6 +239,40 @@ impl ProductIndexEntry
         &self.mode_index
     }
 }
+
+impl Ord for ProductIndexEntry
+{
+    fn cmp(&self, other: &Self) -> Ordering
+    {
+        let a = (self.product_id, self.derivative_id_low, self.derivative_id_high);
+        let b = (other.product_id, other.derivative_id_low, other.derivative_id_high);
+        a.cmp(&b)
+    }
+}
+
+impl PartialOrd for ProductIndexEntry
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for ProductIndexEntry
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        let a = (self.product_id, self.derivative_id_low, self.derivative_id_high);
+        let b = (other.product_id, other.derivative_id_low, other.derivative_id_high);
+        a == b
+    }
+}
+
+impl Eq for ProductIndexEntry
+{
+}
+
+
 
 impl Clone for ProductIndexEntry 
 {
@@ -260,9 +289,10 @@ impl Clone for ProductIndexEntry
 
 impl Iterator for ProductIndexIterator
 {
-    type Item = (u16, ProductIndexEntry);
+    type Item = ProductIndexEntry;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Option<Self::Item> 
+    {
         self.items.pop()
     }
 }
