@@ -12,6 +12,7 @@ pub struct UnitsIndexEntry
     units: u16,
     caption_off: u32,
     tooltip_off: u32,
+	str_len: u16,
     blob: RawBlob,
 }
 
@@ -122,12 +123,13 @@ impl IntoIterator for &UnitsIndex {
 
 impl UnitsIndexEntry {
 
-    pub fn new(units: u16, caption_off: u32, tooltip_off: u32, fp : & mut FileBlob) -> UnitsIndexEntry
+    pub fn new(units: u16, caption_off: u32, tooltip_off: u32, str_len: u16, fp : & mut FileBlob) -> UnitsIndexEntry
     {
         UnitsIndexEntry {
             units,
             caption_off,
             tooltip_off,
+			str_len,
             blob: fp.freeze()
         }
     }
@@ -141,12 +143,12 @@ impl UnitsIndexEntry {
     }
 
     pub fn to_string(&self) -> Result<String, String> {
-        let str1 = match self.blob.get_string(self.caption_off, 16) {
+        let str1 = match self.blob.get_string(self.caption_off, self.str_len) {
             Ok(x) => x,
             Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x)),
         };
         if self.tooltip_off != 0 {
-            let str2 = match self.blob.get_string(self.tooltip_off, 16) {
+            let str2 = match self.blob.get_string(self.tooltip_off, self.str_len) {
                 Ok(x) => x,
                 Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x)),
             };
@@ -155,34 +157,37 @@ impl UnitsIndexEntry {
         return Result::Ok(str1);
     }
 
-    fn load_v2(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
+    fn load_v2(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) 
+	{
         let unit_id = fp.read_le_2bytes(BlobRegions::Units);
         let offset = fp.read_le_4bytes(BlobRegions::Units);
         if offset == 0 {
             panic! {"Empty slot"};
         };
-        let entry = UnitsIndexEntry::new(unit_id, offset, 0, fp);
+        let entry = UnitsIndexEntry::new(unit_id, offset, 0, 16, fp);
         (unit_id, entry)
     }
 
-    fn load_v3(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
+    fn load_v3(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) 
+	{
         let unit_id = fp.read_le_2bytes(BlobRegions::Units);
         let offset = fp.read_le_3bytes(BlobRegions::Units);
         if offset == 0 {
             panic! {"Empty slot"};
         };
-        let entry = UnitsIndexEntry::new(unit_id, offset, 0, fp);
+        let entry = UnitsIndexEntry::new(unit_id, offset, 0, 16, fp);
         (unit_id, entry)
     }
 
-    fn load_v4(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) {
+    fn load_v4(fp: &mut FileBlob) -> (u16, UnitsIndexEntry) 
+	{
         let unit_id = fp.read_le_2bytes(BlobRegions::Units);
         let caption_off = fp.read_le_3bytes(BlobRegions::Units);
         let tooltip_off = fp.read_le_3bytes(BlobRegions::Units);
         if caption_off == 0 {
             panic! {"Empty slot"};
         };
-        let entry = UnitsIndexEntry::new(unit_id, caption_off, tooltip_off, fp);
+        let entry = UnitsIndexEntry::new(unit_id, caption_off, tooltip_off, 256, fp);
         (unit_id, entry)
     }
 }
@@ -194,11 +199,13 @@ impl PartialEq for UnitsIndexEntry {
 }
 
 impl Clone for UnitsIndexEntry {
-    fn clone(&self) -> UnitsIndexEntry {
+    fn clone(&self) -> UnitsIndexEntry 
+	{
         UnitsIndexEntry {
             units: self.units,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
+			str_len: self.str_len,
             blob: self.blob.clone(),
         }
     }

@@ -12,6 +12,7 @@ pub struct ParameterIndexEntry {
     param_num: u8,
     caption_off: u32,
     tooltip_off: u32,
+	str_len: u16,
     mnemonic: Rc<MnemonicIndex>,
     blob: RawBlob,
 }
@@ -81,8 +82,9 @@ impl ParameterIndex {
         }
         let mut params = HashMap::new();
 
+        Self::validate_schema(3, idx_entry_len, num_entries, max_str_len);
+
         if idx_entry_len != 0 {
-            Self::validate_schema(3, idx_entry_len, max_str_len);
 
             for _i in 0..num_entries {
                 let (param, entry) = ParameterIndexEntry::load_v3(fp);
@@ -100,7 +102,8 @@ impl ParameterIndex {
     ///
     /// Read and create a V4 ParameterIndex.
     ///
-    pub fn from_v4(fp: &mut FileBlob) -> ParameterIndex {
+    pub fn from_v4(fp: &mut FileBlob) -> ParameterIndex 
+	{
         let num_params = fp.read_byte(BlobRegions::Parameters);
         let idx_entry_len = fp.read_byte(BlobRegions::Parameters);
 
@@ -108,14 +111,13 @@ impl ParameterIndex {
 
         let mut params = HashMap::new();
         
+        Self::validate_schema(4, idx_entry_len, num_params as u16, 256);
 
         if idx_entry_len != 0 {
-            Self::validate_schema(4, idx_entry_len, 256);
 
             let tmp_info = Self::read_v4_entries(fp, num_params);
 
             for (param, caption_off, tooltip_off, mnemonic_off) in tmp_info {
-//			    println!("{} => {}", menu, offset);
 
                 let mnemonic = if mnemonic_off > 0 {
                     fp.set_pos(mnemonic_off);
@@ -127,7 +129,7 @@ impl ParameterIndex {
 //				println!("{}", param);
 
                 params.insert(param, ParameterIndexEntry::new(
-                    param, caption_off, tooltip_off,
+                    param, caption_off, tooltip_off, 256,
                     mnemonic, fp));
             }
 
@@ -141,7 +143,8 @@ impl ParameterIndex {
     ///
     /// Parameter 255 is a fake parameter used to hold menu caption & tooltip
     ///
-    fn check_param255(params: &mut HashMap<u8, ParameterIndexEntry>) -> (u32, u32) {
+    fn check_param255(params: &mut HashMap<u8, ParameterIndexEntry>) -> (u32, u32) 
+	{
         let fake_param = match params.remove(&255) {
             Some(param) => param,
             None => return (0, 0),
@@ -153,27 +156,35 @@ impl ParameterIndex {
         ParameterIndex::check_param255(&mut self.params)
     }
 
-    pub fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
+    pub fn validate_schema(schema: u16, idx_entry_len: u8, num_entries: u16, max_str_len: u16) 
+	{
 		let mut req_str_len = 32;
+		let req_idx_entry_len;
+
         match schema {
             2 => {
-                if idx_entry_len != 6 {
-                    panic!("V2 ParamIndexEntry wrong size 4 != {}", idx_entry_len)
-                }
-            }
+				req_idx_entry_len = 6;
+            },
             3 => {
-                if idx_entry_len != 5 {
-                    panic!("V3 ParamIndexEntry wrong size 3 != {}", idx_entry_len)
-                }
-            }
+				req_idx_entry_len = 5;
+            },
             4 => {
-                if idx_entry_len != 5 {
-                    panic!("V4 ParamIndexEntry wrong size 3 != {}", idx_entry_len)
-                }
+				req_idx_entry_len = 10;
 				req_str_len = 256;
             }
             _ => panic!("Invalid format"),
         };
+                
+		if num_entries > 0 {
+			if idx_entry_len != req_idx_entry_len {
+                panic!("V{} ParamIndexEntry wrong size {} != {}", schema, req_idx_entry_len, idx_entry_len)
+            }
+		} else {
+			if idx_entry_len != 0 {
+                panic!("ParamIndexEntry should be zero")
+			}
+		}
+
         if max_str_len != req_str_len {
             panic!("Incorrect string len {} != {}", req_str_len, max_str_len);
         }
@@ -183,7 +194,8 @@ impl ParameterIndex {
         self.params.len()
     }
     
-    fn read_v4_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32, u32, u32)> {
+    fn read_v4_entries(fp: &mut FileBlob, num_entries: u8) -> Vec<(u8, u32, u32, u32)> 
+	{
         let mut tmp_info = Vec::new();
 
         for _i in 0..num_entries {
@@ -193,7 +205,9 @@ impl ParameterIndex {
             let mnemonic_off = fp.read_le_3bytes(BlobRegions::Menus);
             if caption_off > 0 {
                 tmp_info.push((param, caption_off, tooltip_off, mnemonic_off));
-            }
+            } else {
+				panic!("Caption offset is zero");
+			}
         }
         tmp_info
     }
@@ -220,19 +234,21 @@ impl IntoIterator for &ParameterIndex {
 
 impl ParameterIndexEntry {
 
-    fn new(param_num: u8, caption_off :u32, tooltip_off:u32, mnemonic : MnemonicIndex, fp : & mut FileBlob)
+    fn new(param_num: u8, caption_off :u32, tooltip_off:u32, str_len : u16, mnemonic : MnemonicIndex, fp : & mut FileBlob)
     -> ParameterIndexEntry
     {
         ParameterIndexEntry {
             param_num,
             caption_off: caption_off,
             tooltip_off: tooltip_off,
+			str_len : str_len,
             mnemonic : Rc::new(mnemonic),
             blob: fp.freeze()
         }
     }
 
-    fn load_v3(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) {
+    fn load_v3(fp: &mut FileBlob) -> (u8, ParameterIndexEntry) 
+	{
         let param = fp.read_le_2bytes(BlobRegions::Parameters);
         if param > 255  {
             panic!("Out of range param {}", param);
@@ -242,7 +258,7 @@ impl ParameterIndexEntry {
             println!("Empty slot");
         };
         let param_entry = ParameterIndexEntry::new(
-            param as u8, offset, 0,
+            param as u8, offset, 0, 32,
             MnemonicIndex::empty(), fp
         );
         (param as u8, param_entry)
@@ -253,7 +269,7 @@ impl ParameterIndexEntry {
         let menu = fp.read_byte(BlobRegions::Parameters);
         let offset = fp.read_le_4bytes(BlobRegions::Parameters);
         let param_entry = ParameterIndexEntry::new(
-            param, offset, 0,
+            param, offset, 0, 32,
             MnemonicIndex::empty(),
             fp
         );
@@ -261,12 +277,12 @@ impl ParameterIndexEntry {
     }
 
     pub fn to_string(&self) -> Result<String, String> {
-        let str1 = match self.blob.get_string(self.caption_off, 32) {
+        let str1 = match self.blob.get_string(self.caption_off, self.str_len) {
             Ok(x) => x,
             Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x)),
         };
         if self.tooltip_off != 0 {
-            let str2 = match self.blob.get_string(self.tooltip_off, 32) {
+            let str2 = match self.blob.get_string(self.tooltip_off, self.str_len) {
                 Ok(x) => x,
                 Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x)),
             };
@@ -293,6 +309,7 @@ impl Clone for ParameterIndexEntry {
             param_num: self.param_num,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
+			str_len : self.str_len,
             mnemonic: self.mnemonic.clone(),
             blob: self.blob.clone(),
         }

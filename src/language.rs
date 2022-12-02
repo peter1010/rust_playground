@@ -159,13 +159,6 @@ impl Language
 
         fp.display_stats();
 
-        for details in &lang.product_index {
-            match details.to_string() {
-                Ok(x) => println!("{}", x),
-                Err(x) => panic!("{}", x),
-            };
-        }
-
         return Result::Ok(lang);
     }
 

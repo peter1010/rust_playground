@@ -54,12 +54,13 @@ impl MnemonicIndex
 
         let mut values = HashMap::new();
 
-        if idx_entry_len != 0 {
-            Self::validate_schema(4, idx_entry_len);
+        Self::validate_schema(4, idx_entry_len, num_entries);
+
+		if idx_entry_len != 0 {
 
             for _i in 0..num_entries {
                 let (value, entry) = MnemonicIndexEntry::load(fp);
-//				println!("{}", param);
+//				println!("{} => {}", value, &entry.to_string().unwrap());
 
                 let old = values.insert(value, entry);
                 if old != None {
@@ -74,15 +75,19 @@ impl MnemonicIndex
     }
 
 
-    pub fn validate_schema(schema: u16, idx_entry_len: u8) {
-        match schema {
-            4 => {
-                if idx_entry_len != 5 {
-                    panic!("V4 MnemonicIndexEntry wrong size 3 != {}", idx_entry_len)
-                }
+    pub fn validate_schema(schema: u16, idx_entry_len: u8, num_entries: u16) {
+        if schema != 4 {
+            panic!("Invalid format");
+		}
+		if num_entries > 0 {
+        	if idx_entry_len != 8 {
+                panic!("V4 MnemonicIndexEntry wrong size 8 != {}", idx_entry_len)
             }
-            _ => panic!("Invalid format"),
-        };
+        } else {
+			if idx_entry_len != 0 {
+                panic!("V4 MnemonicIndexEntry should be zero size")
+			}
+		}
     }
 
     pub fn get_num_values(&self) -> usize {
@@ -131,7 +136,7 @@ impl MnemonicIndexEntry
         let tooltip_off = fp.read_le_3bytes(BlobRegions::Mnemonics);
 
         let value : i32 = if value > 0x7FFFFFF {
-            -((0xFFFFFFFF - value) as i32)
+            -((0xFFFFFFFF - (value - 1)) as i32)
         } else {
             value as i32
         };
@@ -152,12 +157,12 @@ impl MnemonicIndexEntry
 
 
     pub fn to_string(&self) -> Result<String, String> {
-        let str1 = match self.blob.get_string(self.caption_off, 32) {
+        let str1 = match self.blob.get_string(self.caption_off, 256) {
             Ok(x) => x,
             Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x)),
         };
         if self.tooltip_off != 0 {
-            let str2 = match self.blob.get_string(self.tooltip_off, 32) {
+            let str2 = match self.blob.get_string(self.tooltip_off, 256) {
                 Ok(x) => x,
                 Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x)),
             };

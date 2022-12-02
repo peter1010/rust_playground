@@ -12,6 +12,7 @@ pub struct EnumerationsIndex {
 
 pub struct EnumerationsIndexEntry {
     caption_off: u32,
+	str_len: u16,
     blob: RawBlob,
 }
 
@@ -19,8 +20,10 @@ pub struct EnumerationsIndexIterator {
     items: Vec<(u16, EnumerationsIndexEntry)>,
 }
 
-impl EnumerationsIndex {
-    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> EnumerationsIndex {
+impl EnumerationsIndex 
+{
+    pub fn from(fp: &mut FileBlob, schema: u16, root_font_family: u8) -> EnumerationsIndex 
+	{
         let num_entries = fp.read_le_2bytes(BlobRegions::Enumerations);
 		if schema < 4 {
         	let max_str_len = fp.read_le_2bytes(BlobRegions::Enumerations);
@@ -41,8 +44,8 @@ impl EnumerationsIndex {
         for _i in 0..num_entries {
             let (enumeration, entry) = match schema {
                 2 => EnumerationsIndexEntry::load_v2(fp),
-                3 => EnumerationsIndexEntry::load_v3(fp),
-                4 => EnumerationsIndexEntry::load_v3(fp),
+                3 => EnumerationsIndexEntry::load_v3(fp, 16),
+                4 => EnumerationsIndexEntry::load_v3(fp, 256),
                 _ => panic!("Invalid schema"),
             };
             let old = enumerations.insert(enumeration, entry);
@@ -53,7 +56,8 @@ impl EnumerationsIndex {
         EnumerationsIndex { enumerations }
     }
 
-    fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) {
+    fn validate_schema(schema: u16, idx_entry_len: u8, max_str_len: u16) 
+	{
 		let mut req_string_len = 16;
         match schema {
             2 => {
@@ -104,14 +108,16 @@ impl EnumerationsIndexEntry {
         self.caption_off
     }
 
-    pub fn to_string(&self) -> Result<String, String> {
-        match self.blob.get_string(self.caption_off, 16) {
+    pub fn to_string(&self) -> Result<String, String> 
+	{
+        match self.blob.get_string(self.caption_off, self.str_len) {
             Ok(x) => Ok(x),
             Err(x) => Err(format!("Blob offset {} \n\t {}", self.caption_off, x)),
         }
     }
 
-    fn load_v2(fp: &mut FileBlob) -> (u16, EnumerationsIndexEntry) {
+    fn load_v2(fp: &mut FileBlob) -> (u16, EnumerationsIndexEntry) 
+	{
         let enumeration = fp.read_le_2bytes(BlobRegions::Enumerations);
         let offset = fp.read_le_4bytes(BlobRegions::Enumerations);
         if offset == 0 {
@@ -119,12 +125,14 @@ impl EnumerationsIndexEntry {
         };
         let entry = EnumerationsIndexEntry {
             caption_off: offset,
+			str_len: 16,
             blob: fp.freeze(),
         };
         (enumeration, entry)
     }
 
-    fn load_v3(fp: &mut FileBlob) -> (u16, EnumerationsIndexEntry) {
+    fn load_v3(fp: &mut FileBlob, str_len: u16) -> (u16, EnumerationsIndexEntry) 
+	{
         let enumeration = fp.read_le_2bytes(BlobRegions::Enumerations);
         let offset = fp.read_le_3bytes(BlobRegions::Enumerations);
         if offset == 0 {
@@ -132,14 +140,17 @@ impl EnumerationsIndexEntry {
         };
         let entry = EnumerationsIndexEntry {
             caption_off: offset,
+			str_len: str_len,
             blob: fp.freeze(),
         };
         (enumeration, entry)
     }
 }
 
-impl PartialEq for EnumerationsIndexEntry {
-    fn eq(&self, other: &Self) -> bool {
+impl PartialEq for EnumerationsIndexEntry 
+{
+    fn eq(&self, other: &Self) -> bool 
+	{
         self.caption_off == other.caption_off
     }
 }
@@ -148,6 +159,7 @@ impl Clone for EnumerationsIndexEntry {
     fn clone(&self) -> EnumerationsIndexEntry {
         EnumerationsIndexEntry {
             caption_off: self.caption_off,
+			str_len: self.str_len,
             blob: self.blob.clone(),
         }
     }

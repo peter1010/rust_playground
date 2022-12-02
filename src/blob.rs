@@ -291,6 +291,7 @@ impl _Blob {
         let mut current_region = BlobRegions::Invalid;
         let mut pos = 0;
         let mut region_start = 0;
+		let mut prelude = String::new();
 
         for x in &stats.regions {
             
@@ -301,7 +302,13 @@ impl _Blob {
             }
             if reg != current_region {
                 if pos > region_start {
-                    println!("Region from {} to {} is {:?}", region_start, pos-1, current_region);
+                    let text = format!("Region from {} to {} is {:?}", region_start, pos-1, current_region);
+					if current_region == BlobRegions::Empty {
+						println!("{}", prelude);
+						println!("{}", text);
+					} else {
+						prelude = text;
+					}
                     current_region = reg;
                     region_start = pos;
                 }

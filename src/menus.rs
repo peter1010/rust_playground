@@ -14,6 +14,7 @@ pub struct MenuIndexEntry
     menu_num : u8,
     caption_off: u32,
     tooltip_off: u32,
+	str_len: u16,
     param_index: Rc<ParameterIndex>,
     blob: RawBlob,
 }
@@ -58,7 +59,7 @@ impl MenuIndex {
             panic!("Mis-match font_family");
         }
 
-        ParameterIndex::validate_schema(2, idx_entry_len, max_str_len);
+        ParameterIndex::validate_schema(2, idx_entry_len, num_entries, max_str_len);
 
         // Create menus anyway...
         let tmp_menus = ParameterIndex::read_v2_entries(fp, num_entries);
@@ -80,6 +81,7 @@ impl MenuIndex {
                         menu_num,
                         caption_off,
                         tooltip_off,
+						32,
                         param_index,
                         fp
                     ),
@@ -109,6 +111,7 @@ impl MenuIndex {
                 menu_num,
                 caption_off,
                 tooltip_off,
+				32,
                 param_index,
                 fp
             );
@@ -120,9 +123,11 @@ impl MenuIndex {
     ///
     /// Create a MenuIndex from v4 schema
     ///
-    pub fn from_v4(fp: &mut FileBlob) -> MenuIndex {
+    pub fn from_v4(fp: &mut FileBlob) -> MenuIndex 
+	{
         let num_menus = fp.read_byte(BlobRegions::Menus);
         let idx_entry_len = fp.read_byte(BlobRegions::Menus);
+
 
         let mut menus = HashMap::new();
 
@@ -132,12 +137,14 @@ impl MenuIndex {
 
         for (menu_num, caption_off, tooltip_off, offset) in tmp_info {
 //			println!("{} => {}", menu_num, offset);
+
             fp.set_pos(offset);
             let param_index = ParameterIndex::from_v4(fp);
             let menu_entry = MenuIndexEntry::new(
                 menu_num,
                 caption_off,
                 tooltip_off,
+				256,
                 param_index,
                 fp,
             );
@@ -193,9 +200,12 @@ impl MenuIndex {
             let caption_off = fp.read_le_3bytes(BlobRegions::Menus);
             let tooltip_off = fp.read_le_3bytes(BlobRegions::Menus);
             let offset = fp.read_le_3bytes(BlobRegions::Menus);
-            if caption_off > 0 {
+            if offset > 0 {
                 tmp_info.push((i, caption_off, tooltip_off, offset));
-            }
+            } 
+//			else {
+//				panic!("Menu has no caption");
+//			}
         }
         tmp_info
     }
@@ -227,25 +237,27 @@ impl IntoIterator for &MenuIndex {
 
 impl MenuIndexEntry {
 
-    pub fn new(menu_num : u8, caption_off : u32, tooltip_off : u32, param_index : ParameterIndex, fp : & mut FileBlob)
+    pub fn new(menu_num : u8, caption_off : u32, tooltip_off : u32, str_len : u16, param_index : ParameterIndex, fp : & mut FileBlob)
     -> MenuIndexEntry
     {
         MenuIndexEntry {
             menu_num,
             caption_off,
             tooltip_off,
+			str_len,
             param_index: Rc::<ParameterIndex>::new(param_index),
             blob: fp.freeze(),
         }
     }
  
-    pub fn to_string(&self) -> Result<String, String> {
-        let str1 = match self.blob.get_string(self.caption_off, 32) {
+    pub fn to_string(&self) -> Result<String, String> 
+	{
+        let str1 = match self.blob.get_string(self.caption_off, self.str_len) {
             Ok(x) => x,
             Err(x) => return Err(format!("Blob offset {} \n\t {}", self.caption_off, x)),
         };
         if self.tooltip_off != 0 {
-            let str2 = match self.blob.get_string(self.tooltip_off, 32) {
+            let str2 = match self.blob.get_string(self.tooltip_off, self.str_len) {
                 Ok(x) => x,
                 Err(x) => return Err(format!("Blob offset {} \n\t {}", self.tooltip_off, x)),
             };
@@ -267,11 +279,13 @@ impl PartialEq for MenuIndexEntry {
 
 impl Clone for MenuIndexEntry 
 {
-    fn clone(&self) -> MenuIndexEntry {
+    fn clone(&self) -> MenuIndexEntry 
+	{
         MenuIndexEntry {
             menu_num: self.menu_num,
             caption_off: self.caption_off,
             tooltip_off: self.tooltip_off,
+			str_len: self.str_len,
             param_index: self.param_index.clone(),
             blob: self.blob.clone(),
         }
